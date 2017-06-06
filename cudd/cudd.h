@@ -13,6 +13,7 @@
 
   @author Fabio Somenzi
   @author Modified by Abelardo Pardo to interface it to VIS
+  @author Modified by Randal Bryant to implement chaining
 
   @copyright@parblock
   Copyright (c) 1995-2015, Regents of the University of Colorado
@@ -59,6 +60,8 @@
 
 #include <inttypes.h>
 
+
+
 /*---------------------------------------------------------------------------*/
 /* Constant declarations                                                     */
 /*---------------------------------------------------------------------------*/
@@ -87,6 +90,16 @@
 /*---------------------------------------------------------------------------*/
 /* Type declarations                                                         */
 /*---------------------------------------------------------------------------*/
+
+/**
+  @brief Type of chaining.
+*/
+typedef enum {
+    CUDD_CHAIN_NONE,
+    CUDD_CHAIN_CONSTANT,
+    CUDD_CHAIN_ALL
+} Cudd_ChainingType;
+
 
 /**
   @brief Type of reordering algorithm.
@@ -809,6 +822,7 @@ extern DdNode * Cudd_SubsetCompress(DdManager *dd, DdNode *f, int nvars, int thr
 extern DdNode * Cudd_SupersetCompress(DdManager *dd, DdNode *f, int nvars, int threshold);
 extern int Cudd_addHarwell(FILE *fp, DdManager *dd, DdNode **E, DdNode ***x, DdNode ***y, DdNode ***xn, DdNode ***yn_, int *nx, int *ny, int *m, int *n, int bx, int sx, int by, int sy, int pr);
 extern DdManager * Cudd_Init(unsigned int numVars, unsigned int numVarsZ, unsigned int numSlots, unsigned int cacheSize, size_t maxMemory);
+extern void Cudd_SetChaining(DdManager *dd, Cudd_ChainingType type);
 extern void Cudd_Quit(DdManager *unique);
 extern int Cudd_PrintLinear(DdManager *table);
 extern int Cudd_ReadLinear(DdManager *table, int x, int y);

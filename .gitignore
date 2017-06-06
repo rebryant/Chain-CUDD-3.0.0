@@ -50,3 +50,9 @@ modules.order
 Module.symvers
 Mkfile.old
 dkms.conf
+
+# Helper files
+*.old.c
+*.old.h
+*.diff.c
+*.diff.h

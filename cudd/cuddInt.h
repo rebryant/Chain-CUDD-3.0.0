@@ -173,10 +173,15 @@
  ** 64-bit machines one can cast an index to (int) without generating
  ** a negative number.
  */
+#define CUDD_MAXINDEX ((DdQuarterWord) ~0)
+
+#if 0
+/* Original code */
 #if SIZEOF_VOID_P == 8 && SIZEOF_INT == 4
 #define CUDD_MAXINDEX		(((DdHalfWord) ~0) >> 1)
 #else
 #define CUDD_MAXINDEX		((DdHalfWord) ~0)
+#endif
 #endif
 
 /**
@@ -207,8 +212,12 @@
 */
 #if SIZEOF_VOID_P == 8 && SIZEOF_INT == 4
 typedef uint32_t DdHalfWord;
+/* Chaining support */
+typedef uint16_t DdQuarterWord;
 #else
 typedef uint16_t DdHalfWord;
+/* Chaining support */
+typedef uint8_t DdQuarterWord;
 #endif
 
 /**
@@ -259,7 +268,26 @@ struct DdChildren {
  * @brief Decision diagram node.
  */
 struct DdNode {
-    DdHalfWord index;		/**< variable index */
+    /* Chaining Support */
+    /*
+     * Chain nodes are like regular nodes, except they contain a second
+     * index "bindex", which is >= the normal index.
+     *
+     * For BDDs: A chain node with index t (for "top"), bindex b (for
+     * "bottom") and children T and E is like a chain of BDD nodes
+     * with indices t, t+1, ..., b, linked through their Else branches
+     * and all having Then branches equal to T.  The bottommost node
+     * has E as its Else child.
+     *
+     * For ZDDs: A chain node with index t (for "top"), bindex b (for
+     * "bottom") and children T and E is like a chain of ZDD nodes
+     * with indices t, t+1, ..., b, with each linked to its successor
+     * The bottommost child has children T and E.
+     */
+
+
+    DdQuarterWord index;	/**< First variable in range */
+    DdQuarterWord bindex;	/**< Last variable in range */
     DdHalfWord ref;		/**< reference count */
     DdNode *next;		/**< next pointer for unique table */
     union {
@@ -397,6 +425,8 @@ struct DdSubtable {
  *  @brief Specialized %DD symbol table.
  */
 struct DdManager {
+    /* Chaining Support */
+    Cudd_ChainingType chaining; /* What type of chaining to employ */
     /* Constants */
     DdNode sentinel;		/**< for collision lists */
     DdNode *one;		/**< constant 1 */
@@ -767,6 +797,7 @@ struct DdLevelQueue {
 
 */
 #define cuddI(dd,index) (((index)==CUDD_CONST_INDEX)?(int)(index):(dd)->perm[(index)])
+#define cuddII(dd,level) (((level)==CUDD_CONST_INDEX)?(int)(level):(dd)->invperm[(level)])
 
 
 /**
@@ -803,6 +834,18 @@ struct DdLevelQueue {
 #define ddHash(f,g,s) \
 ((((unsigned)(f) * DD_P1 + (unsigned)(g)) * DD_P2) >> (s))
 #endif
+
+/* Chaining Support.  Need to hash bindex */
+#if SIZEOF_VOID_P == 8 && SIZEOF_INT == 4
+#define ddHash2(f,g,s,b)   \
+((((unsigned)(ptruint)(f) * DD_P1 +  \
+   (unsigned)(ptruint)(g)) * DD_P2 + \
+  (unsigned)(b) * DD_P3) >> (s))
+#else
+#define ddHash2(f,g,s,b)   \
+((((unsigned)(f) * DD_P1 + (unsigned)(g)) * DD_P2 (unsigned) (b) * DD_P3) >> (s))
+#endif
+
 
 
 /**
@@ -1186,8 +1229,10 @@ extern int cuddGarbageCollect(DdManager *unique, int clearCache);
 extern DdNode * cuddZddGetNode(DdManager *zdd, int id, DdNode *T, DdNode *E);
 extern DdNode * cuddZddGetNodeIVO(DdManager *dd, int index, DdNode *g, DdNode *h);
 extern DdNode * cuddUniqueInter(DdManager *unique, int index, DdNode *T, DdNode *E);
+extern DdNode * cuddUniqueInterChained (DdManager *unique, int index, int bindex, DdNode *T, DdNode *E);
 extern DdNode * cuddUniqueInterIVO(DdManager *unique, int index, DdNode *T, DdNode *E);
 extern DdNode * cuddUniqueInterZdd(DdManager *unique, int index, DdNode *T, DdNode *E);
+extern DdNode * cuddUniqueInterZddChained (DdManager *unique, int index, int bindex, DdNode *T, DdNode *E);
 extern DdNode * cuddUniqueConst(DdManager *unique, CUDD_VALUE_TYPE value);
 extern void cuddRehash(DdManager *unique, int i);
 extern void cuddShrinkSubtable(DdManager *unique, int i);

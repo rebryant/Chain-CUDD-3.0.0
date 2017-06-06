@@ -4055,7 +4055,13 @@ ddFindSupport(
   DdNode *f,
   int *SP)
 {
-    unsigned int index;
+    /* Chaining support */
+    /* With Chained BDDs, must scan all variables within range.
+       These are determined by the levels, not the indices */
+
+    int index, bindex, mindex;
+    unsigned int level, blevel, mlevel;
+
     DdNode *var;
 
     if (cuddIsConstant(f) || Cudd_IsComplement(f->next)) {
@@ -4063,15 +4069,23 @@ ddFindSupport(
     }
 
     index = f->index;
-    var = dd->vars[index];
-    /* It is possible that var is embedded in f.  That causes no problem,
-    ** though, because if we see it after encountering another node with
-    ** the same index, nothing is supposed to happen.
-    */
-    if (!Cudd_IsComplement(var->next)) {
-        var->next = Cudd_Complement(var->next);
-        dd->stack[*SP] = (DdNode *)(ptruint) index;
-        (*SP)++;
+    bindex = f->bindex;
+    level = cuddI(dd, index);
+    blevel = cuddI(dd, bindex);
+
+    /* Chaining support */
+    for (mlevel = level; mlevel <= blevel; mlevel++) {
+	mindex = cuddII(dd, mlevel);
+	var = dd->vars[mindex];
+	/* It is possible that var is embedded in f.  That causes no problem,
+	** though, because if we see it after encountering another node with
+	** the same index, nothing is supposed to happen.
+	*/
+	if (!Cudd_IsComplement(var->next)) {
+	    var->next = Cudd_Complement(var->next);
+	    dd->stack[*SP] = (DdNode *)(ptruint) mindex;
+	    (*SP)++;
+	}
     }
     ddFindSupport(dd, cuddT(f), SP);
     ddFindSupport(dd, Cudd_Regular(cuddE(f)), SP);
