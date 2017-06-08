@@ -318,7 +318,7 @@ struct DdGen {
     } gen;
     struct {
 	int	sp;
-	DdNode	**stack;
+	DdNode	**stack;    // Stack for traversing graph
     } stack;
     DdNode	*node;
 };
@@ -1276,6 +1276,7 @@ extern DdNode * cuddZddIte(DdManager *dd, DdNode *f, DdNode *g, DdNode *h);
 extern DdNode * cuddZddUnion(DdManager *zdd, DdNode *P, DdNode *Q);
 extern DdNode * cuddZddIntersect(DdManager *zdd, DdNode *P, DdNode *Q);
 extern DdNode * cuddZddDiff(DdManager *zdd, DdNode *P, DdNode *Q);
+extern DdNode * cuddZddSymmetricDiff(DdManager *zdd, DdNode *P, DdNode *Q);
 extern DdNode * cuddZddChangeAux(DdManager *zdd, DdNode *P, DdNode *zvar);
 extern DdNode * cuddZddSubset1(DdManager *dd, DdNode *P, int var);
 extern DdNode * cuddZddSubset0(DdManager *dd, DdNode *P, int var);

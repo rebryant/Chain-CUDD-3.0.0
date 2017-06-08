@@ -1314,6 +1314,7 @@ Cudd_bddPickOneCube(
     DdNode *one, *bzero;
     char   dir;
     int    i;
+    int index, bindex, iindex;
 
     if (string == NULL || node == NULL) return(0);
 
@@ -1337,16 +1338,29 @@ Cudd_bddPickOneCube(
 	if (Cudd_IsComplement(node)) {
 	    T = Cudd_Not(T); E = Cudd_Not(E);
 	}
-	if (T == bzero) {
-	    string[N->index] = 0;
-	    node = E;
-	} else if (E == bzero) {
-	    string[N->index] = 1;
-	    node = T;
-	} else {
-	    dir = (char) ((Cudd_Random(ddm) & 0x2000) >> 13);
-	    string[N->index] = dir;
-	    node = dir ? T : E;
+
+	index = N->index;
+	bindex = N->bindex;
+
+	// For chaining, must go through range of indices
+	for (iindex = index; iindex <= bindex; iindex++) {
+	    if (T == bzero) {
+		string[iindex] = 0;
+		node = E;
+	    } else if (E == bzero) {
+		string[iindex] = 1;
+		node = T;
+		break;
+	    } else {
+		dir = (char) ((Cudd_Random(ddm) & 0x2000) >> 13);
+		string[iindex] = 0;
+		if (dir == 1) {
+		    node = T;
+		    break;
+		} else {
+		    node = E;
+		}
+	    }
 	}
     }
     return(1);
@@ -3111,12 +3125,13 @@ dp2(
     }
     if (st_add_direct(t,g,NULL) == ST_OUT_OF_MEM)
 	return(0);
+    // Chaining support
 #ifdef DD_STATS
-    (void) fprintf(dd->out,"ID = %c0x%"PRIxPTR"\tindex = %d\tr = %d\t", bang(f),
-		(ptruint) g / (ptruint) sizeof(DdNode), g->index, g->ref);
+    (void) fprintf(dd->out,"ID = %c0x%"PRIxPTR"\tindex = %d\tbindex = %d\tr = %d\t", bang(f),
+		   (ptruint) g / (ptruint) sizeof(DdNode), g->index, g->bindex, g->ref);
 #else
-    (void) fprintf(dd->out,"ID = %c0x%" PRIxPTR "\tindex = %u\t", bang(f),
-		(ptruint) g / (ptruint) sizeof(DdNode),g->index);
+    (void) fprintf(dd->out,"ID = %c0x%" PRIxPTR "\tindex = %u\tbindex = %d\t", bang(f),
+		   (ptruint) g / (ptruint) sizeof(DdNode),g->index, g->bindex);
 #endif
     n = cuddT(g);
     if (cuddIsConstant(n)) {
@@ -3493,8 +3508,12 @@ ddCountMintermAux(
     DdNode	*N, *Nt, *Ne;
     double	min, minT, minE;
     DdNode	*res;
+    unsigned int level, blevel;
+    double wtT, wtE;
 
     N = Cudd_Regular(node);
+    level = cuddI(dd, N->index);
+    blevel = cuddI(dd, N->bindex);
 
     if (cuddIsConstant(N)) {
 	if (node == dd->background || node == Cudd_Not(dd->one)) {
@@ -3517,13 +3536,17 @@ ddCountMintermAux(
 	Nt = Cudd_Not(Nt); Ne = Cudd_Not(Ne);
     }
 
+    /* T gets proportionally more weight when node spans multiple levels */
+    wtE = pow(0.5, blevel-level+1);
+    wtT = 1.0 - wtE;
+
     minT = ddCountMintermAux(dd,Nt,max,table);
     if (minT == (double)CUDD_OUT_OF_MEM) return((double)CUDD_OUT_OF_MEM);
-    minT *= 0.5;
+
     minE = ddCountMintermAux(dd,Ne,max,table);
     if (minE == (double)CUDD_OUT_OF_MEM) return((double)CUDD_OUT_OF_MEM);
-    minE *= 0.5;
-    min = minT + minE;
+
+    min = wtT * minT + wtE * minE;
 
     if (N->ref != 1) {
 	ptrint fanout = (ptrint) N->ref;

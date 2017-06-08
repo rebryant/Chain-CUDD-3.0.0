@@ -951,6 +951,7 @@ extern DdNode * Cudd_zddIte(DdManager *dd, DdNode *f, DdNode *g, DdNode *h);
 extern DdNode * Cudd_zddUnion(DdManager *dd, DdNode *P, DdNode *Q);
 extern DdNode * Cudd_zddIntersect(DdManager *dd, DdNode *P, DdNode *Q);
 extern DdNode * Cudd_zddDiff(DdManager *dd, DdNode *P, DdNode *Q);
+extern DdNode * Cudd_zddSymmetricDiff(DdManager *dd, DdNode *P, DdNode *Q);
 extern DdNode * Cudd_zddDiffConst(DdManager *zdd, DdNode *P, DdNode *Q);
 extern DdNode * Cudd_zddSubset1(DdManager *dd, DdNode *P, int var);
 extern DdNode * Cudd_zddSubset0(DdManager *dd, DdNode *P, int var);

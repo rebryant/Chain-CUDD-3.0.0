@@ -80,7 +80,7 @@
 /* Refactored some of the original functions into simpler ones requiring multiple calls */
 static void bddVarToConst (DdNode *f, DdNode **gp, DdNode **hp, DdNode *one);
 static int bddVarToCanonical (DdManager *dd, DdNode **fp, DdNode **gp, DdNode **hp);
-static int bddVarToCanonicalSimple (DdManager *dd, DdNode **fp, DdNode **gp, DdNode **hp);
+static int bddVarToCanonicalSimple (DdNode **fp, DdNode **gp, DdNode **hp);
 
 static unsigned int bddTop(DdManager *dd, int n, DdNode * nodes[], unsigned int levels[]);
 static unsigned int bddBottom(DdManager *dd, int n, DdNode *nodes[], unsigned int levels[], unsigned int top);
@@ -756,7 +756,7 @@ cuddBddIteRecur(
     
     /* Refactored */
     /* From here, there are no constants. */
-    comple = bddVarToCanonicalSimple(dd, &f, &g, &h);
+    comple = bddVarToCanonicalSimple(&f, &g, &h);
 
     nodes[0] = f; nodes[1] = g; nodes[2] = h;
     level = bddTop(dd, 3, nodes, levels);
@@ -1302,7 +1302,6 @@ bddVarToCanonical(
 */
 static int
 bddVarToCanonicalSimple(
-  DdManager * dd,
   DdNode ** fp,
   DdNode ** gp,
   DdNode ** hp)
