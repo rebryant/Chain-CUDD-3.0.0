@@ -768,11 +768,6 @@ cuddZddSymmetricDiff(
     if (P == Q)
 	return(empty);
 
-    /* Check cache. */
-    res = cuddCacheLookup2Zdd(table, cuddZddSymmetricDiff, P, Q);
-    if (res != NULL && res != DD_NON_CONSTANT)
-	return(res);
-
     if (cuddIsConstant(P))
 	p_top = P->index;
     else
@@ -781,6 +776,22 @@ cuddZddSymmetricDiff(
 	q_top = Q->index;
     else
 	q_top = zdd->permZ[Q->index];
+
+    if (p_top > q_top) {
+	/* Switch arguments */
+	DdNode *T = P;
+	int t_top = p_top;
+	P = Q;
+	p_top = q_top;
+	Q = T;
+	q_top = t_top;
+    }
+
+    /* Check cache. */
+    res = cuddCacheLookup2Zdd(table, cuddZddSymmetricDiff, P, Q);
+    if (res != NULL && res != DD_NON_CONSTANT)
+	return(res);
+
     if (p_top < q_top) {
 	e = cuddZddSymmetricDiff(zdd, cuddE(P), Q);
 	if (e == NULL) return(NULL);
@@ -791,10 +802,8 @@ cuddZddSymmetricDiff(
 	    return(NULL);
 	}
 	cuddDeref(e);
-    } else if (p_top > q_top) {
-	res = cuddZddSymmetricDiff(zdd, P, cuddE(Q));
-	if (res == NULL) return(NULL);
     } else {
+	/* p_top == q_top */
 	t = cuddZddSymmetricDiff(zdd, cuddT(P), cuddT(Q));
 	if (t == NULL) return(NULL);
 	cuddRef(t);

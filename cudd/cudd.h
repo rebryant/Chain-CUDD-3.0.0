@@ -1,3 +1,4 @@
+#define DD_STATS
 /**
   @file 
 
