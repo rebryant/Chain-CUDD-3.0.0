@@ -124,6 +124,7 @@ static void ddPatchTree (DdManager *dd, MtrNode *treenode);
 static int cuddCheckCollisionOrdering (DdManager *unique, int i, int j);
 #endif
 static void ddReportRefMess (DdManager *unique, int i, const char *caller);
+static void ddReportRefMessDetailed (DdManager *unique, int i, const char *caller, unsigned dead, unsigned deleted);
 
 /** \endcond */
 
@@ -881,7 +882,8 @@ cuddGarbageCollect(
 	    *lastP = sentinel;
 	}
 	if ((unsigned) deleted != unique->subtables[i].dead) {
-	    ddReportRefMess(unique, i, "cuddGarbageCollect");
+	    ddReportRefMessDetailed(unique, i, "cuddGarbageCollect #1",
+				    (unsigned) deleted, unique->subtables[i].dead);
 	}
 	totalDeleted += deleted;
 	unique->subtables[i].keys -= deleted;
@@ -914,14 +916,16 @@ cuddGarbageCollect(
 	    *lastP = NULL;
 	}
 	if ((unsigned) deleted != unique->constants.dead) {
-	    ddReportRefMess(unique, CUDD_CONST_INDEX, "cuddGarbageCollect");
+	    ddReportRefMessDetailed(unique, CUDD_CONST_INDEX, "cuddGarbageCollect #2",
+				    (unsigned) deleted, unique->constants.dead);
 	}
 	totalDeleted += deleted;
 	unique->constants.keys -= deleted;
 	unique->constants.dead = 0;
     }
     if ((unsigned) totalDeleted != unique->dead) {
-	ddReportRefMess(unique, -1, "cuddGarbageCollect");
+	ddReportRefMessDetailed(unique, -1, "cuddGarbageCollect #3",
+				(unsigned) totalDeleted, unique->dead);
     }
     unique->keys -= totalDeleted;
     unique->dead = 0;
@@ -960,7 +964,8 @@ cuddGarbageCollect(
 	    *lastP = NULL;
 	}
 	if ((unsigned) deleted != unique->subtableZ[i].dead) {
-	    ddReportRefMess(unique, i, "cuddGarbageCollect");
+	    ddReportRefMessDetailed(unique, i, "cuddGarbageCollect #4",
+				    (unsigned) deleted, unique->subtableZ[i].dead);
 	}
 	totalDeletedZ += deleted;
 	unique->subtableZ[i].keys -= deleted;
@@ -971,7 +976,8 @@ cuddGarbageCollect(
     ** If we did we should be careful not to count whatever dead
     ** nodes we found there among the dead ZDD nodes. */
     if ((unsigned) totalDeletedZ != unique->deadZ) {
-	ddReportRefMess(unique, -1, "cuddGarbageCollect");
+	ddReportRefMessDetailed(unique, -1, "cuddGarbageCollect #5",
+				(unsigned) totalDeletedZ, unique->deadZ) ;
     }
     unique->keysZ -= totalDeletedZ;
     unique->deadZ = 0;
@@ -3299,6 +3305,37 @@ ddReportRefMess(
 			   "%s: problem in table %d\n", caller, i);
     }
     (void) fprintf(unique->err, "  dead count != deleted\n");
+    (void) fprintf(unique->err, "  This problem is often due to a missing \
+call to Cudd_Ref\n  or to an extra call to Cudd_RecursiveDeref.\n  \
+See the CUDD Programmer's Guide for additional details.");
+    abort();
+
+} /* end of ddReportRefMess */
+
+/**
+  @brief Reports detailed problem in garbage collection.
+
+  @sideeffect None
+
+  @see ddReportRefMess
+
+*/
+static void
+ddReportRefMessDetailed(
+  DdManager *unique /**< manager */,
+  int i /**< table in which the problem occurred */,
+  const char *caller /**< procedure that detected the problem */,
+  unsigned dead /**< dead count */,
+  unsigned deleted /**< deleted count*/)
+{
+    if (i == CUDD_CONST_INDEX) {
+	(void) fprintf(unique->err,
+			   "%s: problem in constants\n", caller);
+    } else if (i != -1) {
+	(void) fprintf(unique->err,
+			   "%s: problem in table %d\n", caller, i);
+    }
+    (void) fprintf(unique->err, "  dead count (%u) != deleted (%u)\n", dead, deleted);
     (void) fprintf(unique->err, "  This problem is often due to a missing \
 call to Cudd_Ref\n  or to an extra call to Cudd_RecursiveDeref.\n  \
 See the CUDD Programmer's Guide for additional details.");

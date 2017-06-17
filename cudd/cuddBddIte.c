@@ -1358,8 +1358,8 @@ bddTop(
   DdNode * nodes[],
   unsigned int levels[])
 {
-    register int         i, flevel, level;
-    register DdNode      *f, *F;
+    int         i, flevel, level;
+    DdNode      *f, *F;
     level = CUDD_MAXINDEX;
     for (i = 0; i < n; i++) {
 	f = nodes[i];
@@ -1389,8 +1389,8 @@ bddBottom(
   unsigned int levels[],
   unsigned int top)
 {
-    register int         i, fblevel, blevel;
-    register DdNode      *F;
+    int         i, fblevel, blevel;
+    DdNode      *F;
     blevel = CUDD_CONST_INDEX;
     for (i = 0; i < n; i++) {
 	F = Cudd_Regular(nodes[i]);
