@@ -1407,7 +1407,7 @@ bddBottom(
 
 /**
   @brief Get cofactors with respect to variable (given its level)
-         for case wehre result iss either node or its child
+         for case where result is either node or its child
 
   @return None
 
@@ -1451,7 +1451,7 @@ bddSimpleCofactor(
 /**
   @brief Get cofactors of chain node so that top levels >= blevel+1
 
-  @return None
+  @return 1 if cofactoring generated new else node
 
   @sideeffect Sets *fvp & *fnvp to the two cofactors.
 

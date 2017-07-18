@@ -801,7 +801,7 @@ struct DdLevelQueue {
 
 
 /**
-  @brief Finds the current position of %ZDD variable index in the
+  @brief Finds the position of %ZDD variable in the
   order.
 
   @details This macro duplicates the functionality of
@@ -814,6 +814,7 @@ struct DdLevelQueue {
 
 */
 #define cuddIZ(dd,index) (((index)==CUDD_CONST_INDEX)?(int)(index):(dd)->permZ[(index)])
+#define cuddIIZ(dd,index) (((index)==CUDD_CONST_INDEX)?(int)(index):(dd)->invpermZ[(index)])
 
 
 /**

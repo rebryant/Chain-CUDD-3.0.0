@@ -80,6 +80,25 @@ static DdNode * zdd_subset1_aux (DdManager *zdd, DdNode *P, DdNode *zvar);
 static DdNode * zdd_subset0_aux (DdManager *zdd, DdNode *P, DdNode *zvar);
 static void zddVarToConst (DdNode *f, DdNode **gp, DdNode **hp, DdNode *base, DdNode *empty);
 
+static unsigned int zddTop(DdManager *dd, int n, DdNode * nodes[], unsigned int levels[]);
+static unsigned int zddBottom(DdManager *dd, int n, DdNode *nodes[], unsigned int levels[], unsigned int top);
+static void zddSimpleCofactor(DdManager *dd, DdNode *f, unsigned int level, DdNode **fvp, DdNode **fvnp);
+
+/*
+  Type declarations for component functions
+ */
+
+typedef DdNode *(*DdNodeCaseFun) (DdManager *dd, DdNode *P, DdNode *Q, DdNode *base);
+typedef DdNode *(*DdNodeFun) (DdManager *dd, DdNode *P, DdNode *Q);
+ 
+/* Component functions for set operations */
+static DdNode *cuddZddSetop2(DdManager *dd, DdNode *P, DdNode *Q, DdNodeCaseFun cfun, DdNodeFun fun);
+static DdNode *cuddZddUnionCases(DdManager *dd, DdNode *P, DdNode *Q, DdNode *base);
+static DdNode *cuddZddIntersectCases(DdManager *dd, DdNode *P, DdNode *Q, DdNode *base);
+static DdNode *cuddZddDiffCases(DdManager *dd, DdNode *P, DdNode *Q, DdNode *base);
+static DdNode *cuddZddSymmetricDiffCases(DdManager *dd, DdNode *P, DdNode *Q, DdNode *base);
+
+
 /** \endcond */
 
 /*---------------------------------------------------------------------------*/
@@ -242,50 +261,51 @@ Cudd_zddSymmetricDiff(
 */
 DdNode *
 Cudd_zddDiffConst(
-  DdManager * zdd,
+  DdManager * dd,
   DdNode * P,
   DdNode * Q)
 {
-    int		p_top, q_top;
-    DdNode	*empty = DD_ZERO(zdd), *t, *res;
-    DdManager	*table = zdd;
+    unsigned int p_top, q_top, level, levels[2];
+    DdNode	*t, *r, *nodes[2];
+    DdNode *empty = DD_ZERO(dd);
+    DdNode *tautology;
 
     statLine(zdd);
-    if (P == empty)
-	return(empty);
-    if (Q == empty)
-	return(P);
-    if (P == Q)
-	return(empty);
+
+    nodes[0] = P; nodes[1] = Q;
+    level = zddTop(dd, 2, nodes, levels);
+    
+    tautology = (level == CUDD_MAXINDEX) ? DD_ONE(dd) : dd->univ[level];
+
+
+    r = cuddZddDiffCases(dd, P, Q, tautology);
+
+    if (r != NULL)
+	return r;
 
     /* Check cache.  The cache is shared by cuddZddDiff(). */
-    res = cuddCacheLookup2Zdd(table, cuddZddDiff, P, Q);
-    if (res != NULL)
-	return(res);
+    r = cuddCacheLookup2Zdd(dd, cuddZddDiff, P, Q);
+    if (r != NULL)
+	return(r);
 
-    if (cuddIsConstant(P))
-	p_top = P->index;
-    else
-	p_top = zdd->permZ[P->index];
-    if (cuddIsConstant(Q))
-	q_top = Q->index;
-    else
-	q_top = zdd->permZ[Q->index];
+    p_top = levels[0];
+    q_top = levels[1];
+
     if (p_top < q_top) {
-	res = DD_NON_CONSTANT;
+	r = DD_NON_CONSTANT;
     } else if (p_top > q_top) {
-	res = Cudd_zddDiffConst(zdd, P, cuddE(Q));
+	r = Cudd_zddDiffConst(dd, P, cuddE(Q));
     } else {
-	t = Cudd_zddDiffConst(zdd, cuddT(P), cuddT(Q));
+	t = Cudd_zddDiffConst(dd, cuddT(P), cuddT(Q));
 	if (t != empty)
-	    res = DD_NON_CONSTANT;
+	    r = DD_NON_CONSTANT;
 	else
-	    res = Cudd_zddDiffConst(zdd, cuddE(P), cuddE(Q));
+	    r = Cudd_zddDiffConst(dd, cuddE(P), cuddE(Q));
     }
+    if (r != DD_NON_CONSTANT)
+	cuddCacheInsert2(dd, cuddZddDiff, P, Q, r);
 
-    cuddCacheInsert2(table, cuddZddDiff, P, Q, res);
-
-    return(res);
+    return(r);
 
 } /* end of Cudd_zddDiffConst */
 
@@ -407,9 +427,13 @@ cuddZddIte(
   DdNode * h)
 {
     DdNode *tautology, *empty;
-    DdNode *r,*Gv,*Gvn,*Hv,*Hvn,*t,*e;
-    int topf,topg,toph,v,top;
+    DdNode *r, *Fv, *Fvn, *Gv,*Gvn,*Hv,*Hvn,*t,*e;
+    DdNode *nodes[3];
+    unsigned int level, levels[3];
     unsigned int index;
+    DdNode       *deref_set[2];
+    int          i, deref_cnt = 0;
+
 
     statLine(dd);
     /* Trivial cases. */
@@ -417,13 +441,12 @@ cuddZddIte(
     if (f == (empty = DD_ZERO(dd))) {	/* ITE(0,G,H) = H */
 	return(h);
     }
-    topf = cuddIZ(dd,f->index);
-    topg = cuddIZ(dd,g->index);
-    toph = cuddIZ(dd,h->index);
-    v = ddMin(topg,toph);
-    top  = ddMin(topf,v);
 
-    tautology = (top == CUDD_MAXINDEX) ? DD_ONE(dd) : dd->univ[top];
+    nodes[0] = f; nodes[1] = g; nodes[2] = h;
+    level = zddTop(dd, 3, nodes, NULL);
+    index = cuddIIZ(dd, level);
+
+    tautology = (level == CUDD_MAXINDEX) ? DD_ONE(dd) : dd->univ[level];
     if (f == tautology) {			/* ITE(1,G,H) = G */
     	return(g);
     }
@@ -442,72 +465,42 @@ cuddZddIte(
 
     /* Check cache. */
     r = cuddCacheLookupZdd(dd,DD_ZDD_ITE_TAG,f,g,h);
-    if (r != NULL) {
+    if (r != NULL)
 	return(r);
-    }
 
-    /* Recompute these because they may have changed in zddVarToConst. */
-    topg = cuddIZ(dd,g->index);
-    toph = cuddIZ(dd,h->index);
-    v = ddMin(topg,toph);
+    /* Assured that r == NULL */
 
-    if (topf < v) {
-	r = cuddZddIte(dd,cuddE(f),g,h);
-	if (r == NULL) return(NULL);
-    } else if (topf > v) {
-	if (topg > v) {
-	    Gvn = g;
-	    index = h->index;
-	} else {
-	    Gvn = cuddE(g);
-	    index = g->index;
-	}
-	if (toph > v) {
-	    Hv = empty; Hvn = h;
-	} else {
-	    Hv = cuddT(h); Hvn = cuddE(h);
-	}
-	e = cuddZddIte(dd,f,Gvn,Hvn);
-	if (e == NULL) return(NULL);
-	cuddRef(e);
-	r = cuddZddGetNode(dd,index,Hv,e);
-	if (r == NULL) {
-	    Cudd_RecursiveDerefZdd(dd,e);
-	    return(NULL);
-	}
-	cuddDeref(e);
+    /* Compute individual levels.  They may have changed in zddVarToConst. */
+    level = zddTop(dd, 3, nodes, levels);
+
+    /* Refactored */
+    zddSimpleCofactor(dd, f, level, &Fv, &Fvn);
+    zddSimpleCofactor(dd, g, level, &Gv, &Gvn);
+    zddSimpleCofactor(dd, h, level, &Hv, &Hvn);
+    
+    t = cuddZddIte(dd, Fv, Gv, Hv);
+    if (t == NULL)
+	goto cleanup;
+    cuddRef(t);
+    deref_set[deref_cnt++] = t;
+
+    e = cuddZddIte(dd, Fvn, Gvn, Hvn);
+    if (e == NULL)
+	goto cleanup;
+    cuddRef(e);
+    deref_set[deref_cnt++] = e;
+
+    r = cuddZddGetNode(dd,index,t,e);
+
+ cleanup:
+    if (r == NULL) {
+	for (i = 0; i < deref_cnt; i++)
+	    Cudd_RecursiveDerefZdd(dd, deref_set[i]);
     } else {
-	index = f->index;
-	if (topg > v) {
-	    Gv = empty; Gvn = g;
-	} else {
-	    Gv = cuddT(g); Gvn = cuddE(g);
-	}
-	if (toph > v) {
-	    Hv = empty; Hvn = h;
-	} else {
-	    Hv = cuddT(h); Hvn = cuddE(h);
-	}
-	e = cuddZddIte(dd,cuddE(f),Gvn,Hvn);
-	if (e == NULL) return(NULL);
-	cuddRef(e);
-	t = cuddZddIte(dd,cuddT(f),Gv,Hv);
-	if (t == NULL) {
-	    Cudd_RecursiveDerefZdd(dd,e);
-	    return(NULL);
-	}
-	cuddRef(t);
-	r = cuddZddGetNode(dd,index,t,e);
-	if (r == NULL) {
-	    Cudd_RecursiveDerefZdd(dd,e);
-	    Cudd_RecursiveDerefZdd(dd,t);
-	    return(NULL);
-	}
-	cuddDeref(t);
-	cuddDeref(e);
+	for (i = 0; i < deref_cnt; i++)
+	    cuddDeref(deref_set[i]);
+	cuddCacheInsert(dd,DD_ZDD_ITE_TAG,f,g,h,r);
     }
-
-    cuddCacheInsert(dd,DD_ZDD_ITE_TAG,f,g,h,r);
 
     return(r);
 
@@ -522,78 +515,11 @@ cuddZddIte(
 */
 DdNode *
 cuddZddUnion(
-  DdManager * zdd,
+  DdManager * dd,
   DdNode * P,
   DdNode * Q)
 {
-    int		p_top, q_top;
-    DdNode	*empty = DD_ZERO(zdd), *t, *e, *res;
-    DdManager	*table = zdd;
-
-    statLine(zdd);
-    if (P == empty)
-	return(Q);
-    if (Q == empty)
-	return(P);
-    if (P == Q)
-	return(P);
-
-    /* Check cache */
-    res = cuddCacheLookup2Zdd(table, cuddZddUnion, P, Q);
-    if (res != NULL)
-	return(res);
-
-    if (cuddIsConstant(P))
-	p_top = P->index;
-    else
-	p_top = zdd->permZ[P->index];
-    if (cuddIsConstant(Q))
-	q_top = Q->index;
-    else
-	q_top = zdd->permZ[Q->index];
-    if (p_top < q_top) {
-	e = cuddZddUnion(zdd, cuddE(P), Q);
-	if (e == NULL) return (NULL);
-	cuddRef(e);
-	res = cuddZddGetNode(zdd, P->index, cuddT(P), e);
-	if (res == NULL) {
-	    Cudd_RecursiveDerefZdd(table, e);
-	    return(NULL);
-	}
-	cuddDeref(e);
-    } else if (p_top > q_top) {
-	e = cuddZddUnion(zdd, P, cuddE(Q));
-	if (e == NULL) return(NULL);
-	cuddRef(e);
-	res = cuddZddGetNode(zdd, Q->index, cuddT(Q), e);
-	if (res == NULL) {
-	    Cudd_RecursiveDerefZdd(table, e);
-	    return(NULL);
-	}
-	cuddDeref(e);
-    } else {
-	t = cuddZddUnion(zdd, cuddT(P), cuddT(Q));
-	if (t == NULL) return(NULL);
-	cuddRef(t);
-	e = cuddZddUnion(zdd, cuddE(P), cuddE(Q));
-	if (e == NULL) {
-	    Cudd_RecursiveDerefZdd(table, t);
-	    return(NULL);
-	}
-	cuddRef(e);
-	res = cuddZddGetNode(zdd, P->index, t, e);
-	if (res == NULL) {
-	    Cudd_RecursiveDerefZdd(table, t);
-	    Cudd_RecursiveDerefZdd(table, e);
-	    return(NULL);
-	}
-	cuddDeref(t);
-	cuddDeref(e);
-    }
-
-    cuddCacheInsert2(table, cuddZddUnion, P, Q, res);
-
-    return(res);
+    return cuddZddSetop2(dd, P, Q, cuddZddUnionCases, cuddZddUnion);
 
 } /* end of cuddZddUnion */
 
@@ -606,64 +532,11 @@ cuddZddUnion(
 */
 DdNode *
 cuddZddIntersect(
-  DdManager * zdd,
+  DdManager * dd,
   DdNode * P,
   DdNode * Q)
 {
-    int		p_top, q_top;
-    DdNode	*empty = DD_ZERO(zdd), *t, *e, *res;
-    DdManager	*table = zdd;
-
-    statLine(zdd);
-    if (P == empty)
-	return(empty);
-    if (Q == empty)
-	return(empty);
-    if (P == Q)
-	return(P);
-
-    /* Check cache. */
-    res = cuddCacheLookup2Zdd(table, cuddZddIntersect, P, Q);
-    if (res != NULL)
-	return(res);
-
-    if (cuddIsConstant(P))
-	p_top = P->index;
-    else
-	p_top = zdd->permZ[P->index];
-    if (cuddIsConstant(Q))
-	q_top = Q->index;
-    else
-	q_top = zdd->permZ[Q->index];
-    if (p_top < q_top) {
-	res = cuddZddIntersect(zdd, cuddE(P), Q);
-	if (res == NULL) return(NULL);
-    } else if (p_top > q_top) {
-	res = cuddZddIntersect(zdd, P, cuddE(Q));
-	if (res == NULL) return(NULL);
-    } else {
-	t = cuddZddIntersect(zdd, cuddT(P), cuddT(Q));
-	if (t == NULL) return(NULL);
-	cuddRef(t);
-	e = cuddZddIntersect(zdd, cuddE(P), cuddE(Q));
-	if (e == NULL) {
-	    Cudd_RecursiveDerefZdd(table, t);
-	    return(NULL);
-	}
-	cuddRef(e);
-	res = cuddZddGetNode(zdd, P->index, t, e);
-	if (res == NULL) {
-	    Cudd_RecursiveDerefZdd(table, t);
-	    Cudd_RecursiveDerefZdd(table, e);
-	    return(NULL);
-	}
-	cuddDeref(t);
-	cuddDeref(e);
-    }
-
-    cuddCacheInsert2(table, cuddZddIntersect, P, Q, res);
-
-    return(res);
+    return cuddZddSetop2(dd, P, Q, cuddZddIntersectCases, cuddZddIntersect);
 
 } /* end of cuddZddIntersect */
 
@@ -676,72 +549,11 @@ cuddZddIntersect(
 */
 DdNode *
 cuddZddDiff(
-  DdManager * zdd,
+  DdManager * dd,
   DdNode * P,
   DdNode * Q)
 {
-    int		p_top, q_top;
-    DdNode	*empty = DD_ZERO(zdd), *t, *e, *res;
-    DdManager	*table = zdd;
-
-    statLine(zdd);
-    if (P == empty)
-	return(empty);
-    if (Q == empty)
-	return(P);
-    if (P == Q)
-	return(empty);
-
-    /* Check cache.  The cache is shared by Cudd_zddDiffConst(). */
-    res = cuddCacheLookup2Zdd(table, cuddZddDiff, P, Q);
-    if (res != NULL && res != DD_NON_CONSTANT)
-	return(res);
-
-    if (cuddIsConstant(P))
-	p_top = P->index;
-    else
-	p_top = zdd->permZ[P->index];
-    if (cuddIsConstant(Q))
-	q_top = Q->index;
-    else
-	q_top = zdd->permZ[Q->index];
-    if (p_top < q_top) {
-	e = cuddZddDiff(zdd, cuddE(P), Q);
-	if (e == NULL) return(NULL);
-	cuddRef(e);
-	res = cuddZddGetNode(zdd, P->index, cuddT(P), e);
-	if (res == NULL) {
-	    Cudd_RecursiveDerefZdd(table, e);
-	    return(NULL);
-	}
-	cuddDeref(e);
-    } else if (p_top > q_top) {
-	res = cuddZddDiff(zdd, P, cuddE(Q));
-	if (res == NULL) return(NULL);
-    } else {
-	t = cuddZddDiff(zdd, cuddT(P), cuddT(Q));
-	if (t == NULL) return(NULL);
-	cuddRef(t);
-	e = cuddZddDiff(zdd, cuddE(P), cuddE(Q));
-	if (e == NULL) {
-	    Cudd_RecursiveDerefZdd(table, t);
-	    return(NULL);
-	}
-	cuddRef(e);
-	res = cuddZddGetNode(zdd, P->index, t, e);
-	if (res == NULL) {
-	    Cudd_RecursiveDerefZdd(table, t);
-	    Cudd_RecursiveDerefZdd(table, e);
-	    return(NULL);
-	}
-	cuddDeref(t);
-	cuddDeref(e);
-    }
-
-    cuddCacheInsert2(table, cuddZddDiff, P, Q, res);
-
-    return(res);
-
+    return cuddZddSetop2(dd, P, Q, cuddZddDiffCases, cuddZddDiff);
 } /* end of cuddZddDiff */
 
 /**
@@ -752,81 +564,11 @@ cuddZddDiff(
 */
 DdNode *
 cuddZddSymmetricDiff(
-  DdManager * zdd,
+  DdManager * dd,
   DdNode * P,
   DdNode * Q)
 {
-    int		p_top, q_top;
-    DdNode	*empty = DD_ZERO(zdd), *t, *e, *res;
-    DdManager	*table = zdd;
-
-    statLine(zdd);
-    if (P == empty)
-	return(Q);
-    if (Q == empty)
-	return(P);
-    if (P == Q)
-	return(empty);
-
-    if (cuddIsConstant(P))
-	p_top = P->index;
-    else
-	p_top = zdd->permZ[P->index];
-    if (cuddIsConstant(Q))
-	q_top = Q->index;
-    else
-	q_top = zdd->permZ[Q->index];
-
-    if (p_top > q_top) {
-	/* Switch arguments */
-	DdNode *T = P;
-	int t_top = p_top;
-	P = Q;
-	p_top = q_top;
-	Q = T;
-	q_top = t_top;
-    }
-
-    /* Check cache. */
-    res = cuddCacheLookup2Zdd(table, cuddZddSymmetricDiff, P, Q);
-    if (res != NULL && res != DD_NON_CONSTANT)
-	return(res);
-
-    if (p_top < q_top) {
-	e = cuddZddSymmetricDiff(zdd, cuddE(P), Q);
-	if (e == NULL) return(NULL);
-	cuddRef(e);
-	res = cuddZddGetNode(zdd, P->index, cuddT(P), e);
-	if (res == NULL) {
-	    Cudd_RecursiveDerefZdd(table, e);
-	    return(NULL);
-	}
-	cuddDeref(e);
-    } else {
-	/* p_top == q_top */
-	t = cuddZddSymmetricDiff(zdd, cuddT(P), cuddT(Q));
-	if (t == NULL) return(NULL);
-	cuddRef(t);
-	e = cuddZddSymmetricDiff(zdd, cuddE(P), cuddE(Q));
-	if (e == NULL) {
-	    Cudd_RecursiveDerefZdd(table, t);
-	    return(NULL);
-	}
-	cuddRef(e);
-	res = cuddZddGetNode(zdd, P->index, t, e);
-	if (res == NULL) {
-	    Cudd_RecursiveDerefZdd(table, t);
-	    Cudd_RecursiveDerefZdd(table, e);
-	    return(NULL);
-	}
-	cuddDeref(t);
-	cuddDeref(e);
-    }
-
-    cuddCacheInsert2(table, cuddZddSymmetricDiff, P, Q, res);
-
-    return(res);
-
+    return cuddZddSetop2(dd, P, Q, cuddZddSymmetricDiffCases, cuddZddSymmetricDiff);
 } /* end of cuddZddSymmetricDiff */
 
 
@@ -1190,3 +932,298 @@ zddVarToConst(
 
 } /* end of zddVarToConst */
 
+/**
+  @brief General framework for 2-argument set operations
+
+  @return Result of apply set operation fun to P & Q, with cfun handling special cases
+
+  @sideeffect Adds intermediate results to cache
+
+  @see
+
+*/
+static DdNode *
+cuddZddSetop2(
+	      DdManager *dd,
+	      DdNode *P,
+	      DdNode *Q,
+	      DdNodeCaseFun cfun,
+	      DdNodeFun     fun
+)
+{
+    DdNode      *tautology, *t, *e, *r;
+    unsigned int level, levels[2];
+    unsigned int index;
+    DdNode *Pv, *Pvn, *Qv, *Qvn, *nodes[2];
+    DdNode *deref_set[2];
+    int i, deref_cnt = 0;
+
+    statLine(dd);
+    
+#if 0
+    /* DEBUG */
+    if (P == NULL || Q == NULL) {
+	printf("Oops.  Setop2: Invalid arguments P=%p, Q=%p\n", P, Q);
+    } else {
+	printf("Setop2: Arguments P=%p, Q=%p\n", P, Q);
+    }
+#endif
+
+
+    nodes[0] = P; nodes[1] = Q;
+    level = zddTop(dd, 2, nodes, levels);
+    index = cuddIIZ(dd, level);
+    
+    tautology = (level == CUDD_MAXINDEX) ? DD_ONE(dd) : dd->univ[level];
+
+    r = cfun(dd, P, Q, tautology);
+
+    if (r != NULL)
+	return r;
+
+    /* Check cache */
+    r = cuddCacheLookup2Zdd(dd, fun, P, Q);
+    if (r != NULL)
+	return(r);
+
+    /* Guaranteed that r == NULL */
+
+    /* Refactored */
+    zddSimpleCofactor(dd, P, level, &Pv, &Pvn);
+    zddSimpleCofactor(dd, Q, level, &Qv, &Qvn);
+
+    t = cuddZddSetop2(dd, Pv, Qv, cfun, fun);
+    if (t == NULL)
+	goto cleanup;
+    cuddRef(t);
+    deref_set[deref_cnt++] = t;
+
+    e = cuddZddSetop2(dd, Pvn, Qvn, cfun, fun);
+    if (e == NULL)
+	goto cleanup;
+    cuddRef(e);
+    deref_set[deref_cnt++] = e;
+
+    r = cuddZddGetNode(dd,index,t,e);
+
+ cleanup:
+    if (r == NULL) {
+	for (i = 0; i < deref_cnt; i++)
+	    Cudd_RecursiveDerefZdd(dd, deref_set[i]);
+    } else {
+	for (i = 0; i < deref_cnt; i++)
+	    cuddDeref(deref_set[i]);
+	cuddCacheInsert2(dd, fun, P, Q, r);
+    }
+    return(r);
+}
+
+
+/**
+  @brief Handles special cases for Union
+
+  @return result if special case holds, NULL otherwise
+
+  @sideeffect None
+
+  @see zddZddUnion
+
+*/
+static DdNode *
+cuddZddUnionCases(
+		  DdManager *dd,
+		  DdNode *P,
+		  DdNode *Q,
+		  DdNode *base)
+{
+    DdNode	*empty = DD_ZERO(dd);
+    if (P == empty)
+	return(Q);
+    if (Q == empty)
+	return(P);
+    if (P == Q)
+	return(P);
+    if (P == base)
+	return(P);
+    if (Q == base)
+	return(Q);
+    return NULL;
+} /* end of cuddZddUnionCases */
+
+
+/**
+  @brief Handles special cases for Intersection
+
+  @return result if special case holds, NULL otherwise
+
+  @sideeffect None
+
+  @see zddZddUnion
+
+*/
+static DdNode *
+cuddZddIntersectCases(
+		  DdManager *dd,
+		  DdNode *P,
+		  DdNode *Q,
+		  DdNode *base)
+{
+    DdNode	*empty = DD_ZERO(dd);
+    if (P == empty)
+	return(P);
+    if (Q == empty)
+	return(Q);
+    if (P == Q)
+	return(P);
+    if (P == base)
+	return(Q);
+    if (Q == base)
+	return(P);
+    return NULL;
+} /* end of cuddZddIntersectCases */
+
+static DdNode *
+cuddZddDiffCases(
+		  DdManager *dd,
+		  DdNode *P,
+		  DdNode *Q,
+		  DdNode *base)
+{
+    DdNode	*empty = DD_ZERO(dd);
+    if (P == empty)
+	return(P);
+    if (Q == empty)
+	return(P);
+    if (P == Q)
+	return(empty);
+    if (Q == base)
+	return(empty);
+    return NULL;
+} /* end of cuddZddDiffCases */
+
+static DdNode *
+cuddZddSymmetricDiffCases(
+		  DdManager *dd,
+		  DdNode *P,
+		  DdNode *Q,
+		  DdNode *base)
+{
+    DdNode	*empty = DD_ZERO(dd);
+    if (P == empty)
+	return(Q);
+    if (Q == empty)
+	return(P);
+    if (P == Q)
+	return(empty);
+    return NULL;
+} /* end of cuddZddSymmetricDiffCases */
+
+
+
+
+
+/**
+  @brief Finds top levels for a set of nodes.
+
+  @return Minimum level found
+
+  @sideeffect If levels non-null, sets elements of levels to the top levels of the corresponding nodes
+
+  @see zddBottom
+
+*/
+static unsigned int
+zddTop(
+  DdManager  * dd,
+  int n,
+  DdNode * nodes[],
+  unsigned int levels[])
+{
+    int         i, flevel, level;
+    DdNode      *f;
+    level = CUDD_MAXINDEX;
+    for (i = 0; i < n; i++) {
+	f = nodes[i];
+	flevel = cuddIZ(dd,f->index);
+	level = ddMin(level, flevel);
+	if (levels)
+	    levels[i] = flevel;
+    }
+    return (level);
+} /* end of zddTop */
+
+
+/**
+  @brief Finds bottom levels for a set of nodes.
+
+  @return New bottom level for splitting a set of nodes
+
+  @sideeffect None
+
+  @see zddTop
+*/
+static unsigned int
+zddBottom(
+  DdManager  * dd,
+  int n,
+  DdNode * nodes[],
+  unsigned int levels[],
+  unsigned int top)
+{
+    int         i, fblevel, blevel;
+    DdNode      *f;
+    blevel = CUDD_MAXINDEX;
+    for (i = 0; i < n; i++) {
+	f = nodes[i];
+	if (Cudd_IsConstant(f))
+	    fblevel = CUDD_CONST_INDEX;
+	else if (levels[i] == top)
+	    fblevel = cuddIZ(dd,f->bindex);
+	else
+	    fblevel = levels[i]-1;
+	blevel = ddMin(blevel, fblevel);
+    }
+    return (blevel);
+} /* end of zddBottom */
+
+
+/**
+  @brief Get cofactors with respect to variable (given its level)
+         for case where result is either node or its child
+
+  @return None
+
+  @sideeffect Sets *fvp & *fvnp to the two cofactors.
+  If indexp non-NULL, sets *indexp to node index if it is at this level.
+
+  @see zddSimpleCofactorChained
+
+*/
+static void
+zddSimpleCofactor(
+  DdManager * dd,
+  DdNode * f,
+  unsigned int level,
+  DdNode ** fvp,
+  DdNode ** fvnp)
+{
+    unsigned int flevel;
+    DdNode *fv, *fvn;
+
+    flevel = cuddIZ(dd,f->index);
+
+    if (flevel == level) {
+	fv = cuddT(f);
+	fvn = cuddE(f);
+    } else {
+	fv = DD_ZERO(dd);
+	fvn = f;
+    }
+    *fvp = fv;
+    *fvnp = fvn;
+#if 0
+    /* DEBUG */
+    printf("Cofactoring %p (level = %u) at level %u.  Got T=%p, E=%p\n", f, flevel, level, fv, fvn);
+#endif
+
+}  /* End of zddSimpleCofactor */
