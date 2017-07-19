@@ -708,8 +708,8 @@ cuddBddIteRecur(
     unsigned int index, bindex;
     unsigned int levels[3], level, blevel;
     int		 comple;
-    DdNode       *deref_set[5];
-    int          use_idr[5];
+    DdNode       *deref_set[6];
+    int          use_idr[6];
     int          i, deref_cnt = 0;
 
     statLine(dd);
@@ -831,6 +831,7 @@ cuddBddIteRecur(
 	    Cudd_IterDerefBdd(dd, deref_set[i]);
 	return r;
     } else {
+	cuddRef(r);
 	for (i = 0; i < deref_cnt; i++) {
 	    if (use_idr[i])
 		Cudd_IterDerefBdd(dd, deref_set[i]);
@@ -838,6 +839,7 @@ cuddBddIteRecur(
 		cuddDeref(deref_set[i]);
 	}
 	cuddCacheInsert(dd, DD_BDD_ITE_TAG, f, g, h, r);
+	cuddDeref(r);
 	return(Cudd_NotCond(r,comple));
     }
 
@@ -1026,6 +1028,7 @@ cuddBddAndRecur(
 	for (i = 0; i < deref_cnt; i++)
 	    Cudd_IterDerefBdd(manager, deref_set[i]);
     } else {
+	cuddRef(r);
 	for (i = 0; i < deref_cnt; i++) {
 	    if (use_idr[i])
 		Cudd_IterDerefBdd(manager, deref_set[i]);
@@ -1034,6 +1037,7 @@ cuddBddAndRecur(
 	}
 	if (F->ref != 1 || G->ref != 1)
 	    cuddCacheInsert2(manager, Cudd_bddAnd, f, g, r);
+	cuddDeref(r);
     }
 
     return(r);
@@ -1139,6 +1143,7 @@ cuddBddXorRecur(
 	for (i = 0; i < deref_cnt; i++)
 	    Cudd_IterDerefBdd(manager, deref_set[i]);
     } else {
+	cuddRef(r);
 	for (i = 0; i < deref_cnt; i++) {
 	    if (use_idr[i]) 
 		Cudd_IterDerefBdd(manager, deref_set[i]);
@@ -1149,6 +1154,7 @@ cuddBddXorRecur(
 	G = Cudd_Regular(g);
 	if (F->ref != 1 || G->ref != 1)
 	    cuddCacheInsert2(manager, Cudd_bddXor, f, g, r);
+	cuddDeref(r);
     }
     return(r);
 

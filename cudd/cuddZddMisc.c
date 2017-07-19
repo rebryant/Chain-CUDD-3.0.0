@@ -167,9 +167,9 @@ Cudd_zddPrintSubtable(
 	    z1 = ZSubTable->nodelist[j];
 	    while (z1 != NIL(DdNode)) {
 		(void) fprintf(table->out,
-		    "ID = 0x%" PRIxPTR "\tindex = %u\tr = %u\t",
-		    (ptruint) z1 / (ptruint) sizeof(DdNode),
-		    z1->index, z1->ref);
+		    "ID = 0x%" PRIxPTR "\tindex = %u\tbindex = %u\tr = %u\t",
+			       (ptruint) z1 / (ptruint) sizeof(DdNode),
+			       z1->index, z1->bindex, z1->ref);
 		z1_next = cuddT(z1);
 		if (Cudd_IsConstantInt(z1_next)) {
 		    (void) fprintf(table->out, "T = %d\t\t",

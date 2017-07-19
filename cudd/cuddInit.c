@@ -223,8 +223,9 @@ int
 cuddZddInitUniv(
   DdManager * zdd)
 {
-    DdNode	*p, *res;
+    DdNode	*p, *res, *one;
     int		i;
+    int bindex;
 
     zdd->univ = ALLOC(DdNodePtr, zdd->sizeZ);
     if (zdd->univ == NULL) {
@@ -232,19 +233,32 @@ cuddZddInitUniv(
 	return(0);
     }
 
-    res = DD_ONE(zdd);
+    one = res = DD_ONE(zdd);
     cuddRef(res);
+    bindex = zdd->invpermZ[zdd->sizeZ - 1];
+    
     for (i = zdd->sizeZ - 1; i >= 0; i--) {
 	unsigned int index = zdd->invpermZ[i];
 	p = res;
-	res = cuddUniqueInterZdd(zdd, index, p, p);
-	if (res == NULL) {
-	    Cudd_RecursiveDerefZdd(zdd,p);
-	    FREE(zdd->univ);
-	    return(0);
+	if (zdd->chaining == CUDD_CHAIN_ALL) {
+	    res = cuddUniqueInterZddChained(zdd, index, bindex, one, one);
+	    if (res == NULL) {
+		FREE(zdd->univ);
+		return(0);
+	    } else
+		cuddRef(res);
 	}
-	cuddRef(res);
-	cuddDeref(p);
+	else {
+	    res = cuddUniqueInterZdd(zdd, index, p, p);
+	    if (res == NULL) {
+		Cudd_RecursiveDerefZdd(zdd,p);
+		FREE(zdd->univ);
+		return(0);
+	    } else {
+		cuddRef(res);
+		cuddDeref(p);
+	    }
+	}
 	zdd->univ[i] = res;
     }
 

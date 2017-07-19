@@ -1034,6 +1034,109 @@ cuddGarbageCollect(
 } /* end of cuddGarbageCollect */
 
 
+
+/**
+  @brief Find or generate node with specified index, bindex, and children
+
+` @returns pointer to appropriate node
+
+  @sideeffect Stores any newly generated node in unique table.  If
+  use_rdrp valid, then set to 1 if e should be removed by recursive
+  dereference.
+  
+  @see cuddUniqueInter
+
+*/
+
+DdNode *
+cuddZddGenerateNode(
+  DdManager * dd,
+  int index,
+  int bindex,
+  DdNode *t,
+  DdNode *e,
+  int    *use_rdrp)
+{
+    DdNode *r = NULL;
+
+    DdNode *nextt, *nexte;
+    unsigned int blevel, nextlevel;
+    int nextbindex;
+    int use_rdr = 0;
+
+    if (t == DD_ZERO(dd))
+	return (e);   /* Zero suppression rule */
+
+    /* See if can do chain compression */
+    if (!Cudd_IsConstant(t) && t == e) {
+	nextt = Cudd_T(t);
+	if (dd->chaining == CUDD_CHAIN_ALL) {
+	    blevel = cuddIZ(dd,bindex);
+	    nextlevel = cuddIZ(dd,t->index);
+	    if (nextlevel == blevel+1) {
+		nextbindex = t->bindex;
+		nextt = Cudd_T(t);
+		cuddRef(nextt);
+		nexte = Cudd_E(t);
+		cuddRef(nexte);
+		r = cuddUniqueInterZddChained(dd,(int)index,(int)nextbindex,nextt,nexte);
+		cuddDeref(nextt);
+		cuddDeref(nexte);
+		use_rdr = 1;
+#if 0
+		printf("Chained %u:%u+%u:%u.\n",
+		       cuddI(dd,index), blevel, nextlevel, cuddIZ(dd,nextbindex));
+#endif
+	    }
+	}
+    }
+
+    if (r == NULL) {
+	r = cuddUniqueInterZddChained(dd,(int)index,(int)bindex,t,e);
+	if (r == NULL) {
+	    Cudd_RecursiveDerefZdd(dd, t);
+	    Cudd_RecursiveDerefZdd(dd, e);
+	    if (use_rdrp)
+		*use_rdrp = 0;
+	    return(NULL);
+	}
+    }
+
+    if (use_rdrp)
+	*use_rdrp = use_rdr;
+
+    return(r);
+} /* End of cuddZddGenerateNode */
+
+/**
+  @brief Wrapper for cuddUniqueInterZdd.
+
+  @details It applies the %ZDD reduction rule.
+
+  @return a pointer to the result node under normal conditions; NULL
+  if reordering occurred or memory was exhausted.
+
+  @sideeffect None
+
+  @see cuddUniqueInterZdd
+
+*/
+DdNode *
+cuddZddGetNodeChained(
+  DdManager * zdd,
+  int  index,
+  int bindex,
+  DdNode * T,
+  DdNode * E)
+{
+    DdNode	*node;
+
+    node = cuddZddGenerateNode(zdd, index, bindex, T, E, NULL);
+    return(node);
+
+} /* end of cuddZddGetNodeChained */
+
+
 /**
   @brief Wrapper for cuddUniqueInterZdd.
 
@@ -1050,15 +1153,13 @@ cuddGarbageCollect(
 DdNode *
 cuddZddGetNode(
   DdManager * zdd,
-  int  id,
+  int  index,
   DdNode * T,
   DdNode * E)
 {
     DdNode	*node;
 
-    if (T == DD_ZERO(zdd))
-	return(E);
-    node = cuddUniqueInterZdd(zdd, id, T, E);
+    node = cuddZddGetNodeChained(zdd, index, index, T, E);
     return(node);
 
 } /* end of cuddZddGetNode */
@@ -1180,7 +1281,7 @@ cuddUniqueInterChained(
 #ifdef DD_DEBUG
     assert(level < (unsigned) cuddI(unique,T->index));
     assert(level < (unsigned) cuddI(unique,Cudd_Regular(E)->index));
-    assert(level <= unique->perm[bindex]);
+    assert(level <= (unsigned) cuddI(unique, bindex));
 #endif
 
     /* Chaining Support */
@@ -1445,7 +1546,7 @@ cuddUniqueInterIVO(
 
 /**
   @brief Checks the unique table for the existence of an internal
-  %ZDD node.
+  %ZDD node for special case where index == bindex
 
   @details If it does not exist, it creates a new one.  Does not
   modify the reference count of whatever is returned.  A newly created
@@ -1466,6 +1567,36 @@ DdNode *
 cuddUniqueInterZdd(
   DdManager * unique,
   int  index,
+  DdNode * T,
+  DdNode * E)
+{
+    return cuddUniqueInterZddChained(unique, index, index, T, E);
+} /* end of cuddUniqueInterZdd */
+
+/**
+  @brief Checks the unique table for the existence of an internal
+  %ZDD node.
+
+  @details If it does not exist, it creates a new one.  Does not
+  modify the reference count of whatever is returned.  A newly created
+  internal node comes back with a reference count 0.  For a newly
+  created node, increments the reference counts of what T and E point
+  to.
+
+  @return a pointer to the new node if successful; NULL if memory is
+  exhausted, if a termination request was detected, if a timeout expired,
+  or if reordering took place.
+
+  @sideeffect None
+
+  @see cuddUniqueInter
+
+*/
+DdNode *
+cuddUniqueInterZddChained(
+  DdManager * unique,
+  int  index,
+  int bindex,
   DdNode * T,
   DdNode * E)
 {
@@ -1491,7 +1622,8 @@ cuddUniqueInterZdd(
             return(NULL);
         }
     }
-    if (index >= unique->sizeZ) {
+    /* Guarantee: bindex >= index */
+    if (bindex >= unique->sizeZ) {
 	if (!cuddResizeTableZdd(unique,index)) return(NULL);
     }
 
@@ -1501,6 +1633,7 @@ cuddUniqueInterZdd(
 #ifdef DD_DEBUG
     assert(level < (unsigned) cuddIZ(unique,T->index));
     assert(level < (unsigned) cuddIZ(unique,Cudd_Regular(E)->index));
+    assert(level <= (unsigned) cuddIZ(unique, bindex));
 #endif
 
     if (subtable->keys > subtable->maxKeys) {
@@ -1521,12 +1654,14 @@ cuddUniqueInterZdd(
 	}
     }
 
-    pos = ddHash(T, E, subtable->shift);
+    pos = ddHash2(T, E, subtable->shift, bindex);
     nodelist = subtable->nodelist;
     looking = nodelist[pos];
 
     while (looking != NULL) {
-	if (cuddT(looking) == T && cuddE(looking) == E) {
+	if (cuddT(looking) == T && cuddE(looking) == E
+	    /* Chaining Support */
+	    && looking->bindex == bindex) {
 	    if (looking->ref == 0) {
 		cuddReclaimZdd(unique,looking);
 	    }
@@ -1573,8 +1708,8 @@ cuddUniqueInterZdd(
     looking = cuddAllocNode(unique);
     if (looking == NULL) return(NULL);
     looking->index = index;
-    /* Partial chaining support */
-    looking->bindex = index;
+    /* Chaining support */
+    looking->bindex = bindex;
     cuddT(looking) = T;
     cuddE(looking) = E;
     looking->next = nodelist[pos];
@@ -1584,7 +1719,7 @@ cuddUniqueInterZdd(
 
     return(looking);
 
-} /* end of cuddUniqueInterZdd */
+} /* end of cuddUniqueInterZddChained */
 
 
 /**

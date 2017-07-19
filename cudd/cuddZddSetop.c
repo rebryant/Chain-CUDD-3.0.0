@@ -83,6 +83,8 @@ static void zddVarToConst (DdNode *f, DdNode **gp, DdNode **hp, DdNode *base, Dd
 static unsigned int zddTop(DdManager *dd, int n, DdNode * nodes[], unsigned int levels[]);
 static unsigned int zddBottom(DdManager *dd, int n, DdNode *nodes[], unsigned int levels[], unsigned int top);
 static void zddSimpleCofactor(DdManager *dd, DdNode *f, unsigned int level, DdNode **fvp, DdNode **fvnp);
+static int zddSimpleCofactorChained(DdManager *dd, DdNode *f, unsigned int blevel,
+				    DdNode **fvp, DdNode **fvnp);
 
 /*
   Type declarations for component functions
@@ -429,9 +431,10 @@ cuddZddIte(
     DdNode *tautology, *empty;
     DdNode *r, *Fv, *Fvn, *Gv,*Gvn,*Hv,*Hvn,*t,*e;
     DdNode *nodes[3];
-    unsigned int level, levels[3];
-    unsigned int index;
-    DdNode       *deref_set[2];
+    unsigned int level, blevel, levels[3];
+    unsigned int index, bindex;
+    DdNode       *deref_set[6];
+    int          use_rdr[6];
     int          i, deref_cnt = 0;
 
 
@@ -444,7 +447,6 @@ cuddZddIte(
 
     nodes[0] = f; nodes[1] = g; nodes[2] = h;
     level = zddTop(dd, 3, nodes, NULL);
-    index = cuddIIZ(dd, level);
 
     tautology = (level == CUDD_MAXINDEX) ? DD_ONE(dd) : dd->univ[level];
     if (f == tautology) {			/* ITE(1,G,H) = G */
@@ -472,34 +474,56 @@ cuddZddIte(
 
     /* Compute individual levels.  They may have changed in zddVarToConst. */
     level = zddTop(dd, 3, nodes, levels);
+    index = cuddIIZ(dd, level);
+
+    blevel = zddBottom(dd, 3, nodes, levels, level);
+    bindex = cuddIIZ(dd, blevel);
+
+    /* Keep GCC happy */
+    Fv = Fvn = Gv = Gvn = Hv = Hvn = NULL;
 
     /* Refactored */
-    zddSimpleCofactor(dd, f, level, &Fv, &Fvn);
-    zddSimpleCofactor(dd, g, level, &Gv, &Gvn);
-    zddSimpleCofactor(dd, h, level, &Hv, &Hvn);
+    if (zddSimpleCofactorChained(dd, f, blevel, &Fv, &Fvn)) {
+	use_rdr[deref_cnt] = 1;
+	deref_set[deref_cnt++] = Fv;
+    }
+    if (zddSimpleCofactorChained(dd, g, blevel, &Gv, &Gvn)) {
+	use_rdr[deref_cnt] = 1;
+	deref_set[deref_cnt++] = Gv;
+    }
+    if (zddSimpleCofactorChained(dd, h, blevel, &Hv, &Hvn)) {
+	use_rdr[deref_cnt] = 1;
+	deref_set[deref_cnt++] = Hv;
+    }
     
     t = cuddZddIte(dd, Fv, Gv, Hv);
     if (t == NULL)
 	goto cleanup;
     cuddRef(t);
+    use_rdr[deref_cnt] = 0;
     deref_set[deref_cnt++] = t;
 
     e = cuddZddIte(dd, Fvn, Gvn, Hvn);
     if (e == NULL)
 	goto cleanup;
     cuddRef(e);
-    deref_set[deref_cnt++] = e;
 
-    r = cuddZddGetNode(dd,index,t,e);
+    r = cuddZddGenerateNode(dd,index,bindex,t,e, &use_rdr[deref_cnt]);
+    deref_set[deref_cnt++] = e;
 
  cleanup:
     if (r == NULL) {
 	for (i = 0; i < deref_cnt; i++)
 	    Cudd_RecursiveDerefZdd(dd, deref_set[i]);
     } else {
+	cuddRef(r);
 	for (i = 0; i < deref_cnt; i++)
-	    cuddDeref(deref_set[i]);
+	    if (use_rdr[i])
+		Cudd_RecursiveDerefZdd(dd, deref_set[i]);
+	    else
+		cuddDeref(deref_set[i]);
 	cuddCacheInsert(dd,DD_ZDD_ITE_TAG,f,g,h,r);
+	cuddDeref(r);
     }
 
     return(r);
@@ -952,10 +976,11 @@ cuddZddSetop2(
 )
 {
     DdNode      *tautology, *t, *e, *r;
-    unsigned int level, levels[2];
-    unsigned int index;
+    unsigned int level, blevel, levels[2];
+    unsigned int index, bindex;
     DdNode *Pv, *Pvn, *Qv, *Qvn, *nodes[2];
-    DdNode *deref_set[2];
+    DdNode *deref_set[5];
+    int use_rdr[5];
     int i, deref_cnt = 0;
 
     statLine(dd);
@@ -972,7 +997,6 @@ cuddZddSetop2(
 
     nodes[0] = P; nodes[1] = Q;
     level = zddTop(dd, 2, nodes, levels);
-    index = cuddIIZ(dd, level);
     
     tautology = (level == CUDD_MAXINDEX) ? DD_ONE(dd) : dd->univ[level];
 
@@ -987,33 +1011,52 @@ cuddZddSetop2(
 	return(r);
 
     /* Guaranteed that r == NULL */
+    index = cuddIIZ(dd, level);
+
+    blevel = zddBottom(dd, 2, nodes, levels, level);
+    bindex = cuddIIZ(dd, blevel);
+
+    /* Keep GCC happy */
+    Pv = Pvn = Qv = Qvn = NULL;
 
     /* Refactored */
-    zddSimpleCofactor(dd, P, level, &Pv, &Pvn);
-    zddSimpleCofactor(dd, Q, level, &Qv, &Qvn);
+    if (zddSimpleCofactorChained(dd, P, blevel, &Pv, &Pvn)) {
+	use_rdr[deref_cnt] = 1;
+	deref_set[deref_cnt++] = Pv;
+    }
+    if (zddSimpleCofactorChained(dd, Q, blevel, &Qv, &Qvn)) {
+	use_rdr[deref_cnt] = 1;
+	deref_set[deref_cnt++] = Qv;
+    }
 
     t = cuddZddSetop2(dd, Pv, Qv, cfun, fun);
     if (t == NULL)
 	goto cleanup;
     cuddRef(t);
+    use_rdr[deref_cnt] = 0;
     deref_set[deref_cnt++] = t;
 
     e = cuddZddSetop2(dd, Pvn, Qvn, cfun, fun);
     if (e == NULL)
 	goto cleanup;
     cuddRef(e);
-    deref_set[deref_cnt++] = e;
 
-    r = cuddZddGetNode(dd,index,t,e);
+    r = cuddZddGenerateNode(dd,index,bindex,t,e, &use_rdr[deref_cnt]);
+    deref_set[deref_cnt++] = e;
 
  cleanup:
     if (r == NULL) {
 	for (i = 0; i < deref_cnt; i++)
 	    Cudd_RecursiveDerefZdd(dd, deref_set[i]);
     } else {
+	cuddRef(r);
 	for (i = 0; i < deref_cnt; i++)
-	    cuddDeref(deref_set[i]);
+	    if (use_rdr[i])
+		Cudd_RecursiveDerefZdd(dd, deref_set[i]);
+	    else
+		cuddDeref(deref_set[i]);
 	cuddCacheInsert2(dd, fun, P, Q, r);
+	cuddDeref(r);
     }
     return(r);
 }
@@ -1227,3 +1270,70 @@ zddSimpleCofactor(
 #endif
 
 }  /* End of zddSimpleCofactor */
+
+
+/**
+  @brief Get cofactors of chain node so that top levels >= blevel+1
+
+  @return 1 if cofactoring generated new else node
+
+  @sideeffect Sets *fvp & *fnvp to the two cofactors.
+
+  @see zddSimpleCofactor
+
+*/
+static int
+zddSimpleCofactorChained(
+  DdManager * dd,
+  DdNode * f,
+  unsigned int blevel,
+  DdNode ** fvp,
+  DdNode ** fvnp)
+{
+    DdNode *fv, *fvn, *fvtn, *fven;
+    unsigned int findex, flevel, fbindex, fblevel, nindex;
+
+    int new_ref = 0;
+
+    findex = f->index;
+    flevel = cuddIZ(dd,findex);
+    fbindex = f->bindex;
+    fblevel = cuddIZ(dd,fbindex);
+
+    if (blevel < flevel) {
+	/* Zero suppression */
+	fv = DD_ZERO(dd);
+	fvn = f;
+    } else if (blevel == fblevel) {
+	/* Splitting parameters match this node */
+	fv = cuddT(f);
+	fvn = cuddE(f);
+    } else {
+	/* blevel < fblevel */
+	/* Must construct new node for both children */
+	fvtn = cuddT(f);
+	fven = cuddE(f);
+	nindex = cuddIIZ(dd, blevel + 1);
+	fv = fvn = cuddUniqueInterChained(dd,(int)nindex,(int)fbindex,fvtn,fven);
+	if (fv == NULL) 
+	    return 0;
+#if 0
+	printf("Cofactored node %p with indices %d:%d into one %p with indices %d:%d\n",
+	       f, findex, fbindex, fv, nindex, fbindex);
+#endif
+	/* Create reference for it */
+	cuddRef(fv);
+	new_ref = 1;
+    }
+    *fvp = fv;
+    *fvnp = fvn;
+#if 0
+    printf("Node %p.  level = %u, blevel = %u.  Cofactoring to blevel %u\n",
+	   f, flevel, fblevel, blevel);
+    printf("\tT --> %p.  level = %u, blevel = %u\n",
+	   fv, cuddIZ(dd, fv->index), cuddIZ(dd, fv->bindex));
+    printf("\tE --> %p.  level = %u, blevel = %u\n",
+	   fvn, cuddIZ(dd, fvn->index), cuddIZ(dd, fvn->bindex));
+#endif
+    return new_ref;
+}

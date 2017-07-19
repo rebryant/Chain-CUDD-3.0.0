@@ -902,8 +902,8 @@ zp2(
     if (st_insert(t, f, NULL) == ST_OUT_OF_MEM)
 	return(0);
 
-    (void) fprintf(zdd->out, "ID = 0x%" PRIxPTR "\tindex = %u\tr = %u\t",
-	(ptruint)f / (ptruint) sizeof(DdNode), f->index, f->ref);
+    (void) fprintf(zdd->out, "ID = 0x%" PRIxPTR "\tindex = %u\tbindex = %u\tr = %u\t",
+		   (ptruint)f / (ptruint) sizeof(DdNode), f->index, f->bindex, f->ref);
 
     n = cuddT(f);
     if (Cudd_IsConstantInt(n)) {

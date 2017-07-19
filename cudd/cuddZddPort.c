@@ -179,6 +179,7 @@ zddPortFromBddStep(
     int		index, level;
     int         bindex, blevel;
     int         iindex, ilevel;
+    int         use_rdr;
 
     statLine(dd);
     /* Terminal cases. */
@@ -202,16 +203,30 @@ zddPortFromBddStep(
 	if (expected < level) {
 	    /* Add suppressed variables. */
 	    cuddRef(res);
-	    for (ilevel = level-1; ilevel >= expected; ilevel--) {
+	    if (dd->chaining == CUDD_CHAIN_ALL) {
 		prevZdd = res;
-		iindex = dd->invperm[ilevel];
-		res = cuddZddGetNode(dd, iindex, prevZdd, prevZdd);
+		res = cuddZddGenerateNode(dd, expected, level-1, prevZdd, prevZdd, &use_rdr);
 		if (res == NULL) {
 		    Cudd_RecursiveDerefZdd(dd, prevZdd);
 		    return(NULL);
 		}
 		cuddRef(res);
-		Cudd_RecursiveDerefZdd(dd, prevZdd);
+		if (use_rdr)
+		    Cudd_RecursiveDerefZdd(dd, prevZdd);
+		else
+		    cuddDeref(prevZdd);
+	    } else {
+		for (ilevel = level-1; ilevel >= expected; ilevel--) {
+		    prevZdd = res;
+		    iindex = dd->invperm[ilevel];
+		    res = cuddZddGetNode(dd, iindex, prevZdd, prevZdd);
+		    if (res == NULL) {
+			Cudd_RecursiveDerefZdd(dd, prevZdd);
+			return(NULL);
+		    }
+		    cuddRef(res);
+		    Cudd_RecursiveDerefZdd(dd, prevZdd);
+		}
 	    }
 	    cuddDeref(res);
 	}
@@ -278,17 +293,29 @@ zddPortFromBddStep(
 
     cuddCacheInsert1(dd,Cudd_zddPortFromBdd,B,res);
 
-    for (ilevel = level-1; ilevel >= expected; ilevel--) {
-	prevZdd = res;
-	iindex = dd->invperm[ilevel];
-	res = cuddZddGetNode(dd, iindex, prevZdd, prevZdd);
-	if (res == NULL) {
-	    //	    printf("Null return #5\n");
-	    Cudd_RecursiveDerefZdd(dd, prevZdd);
-	    return(NULL);
+    if (expected < level) {
+	if (dd->chaining == CUDD_CHAIN_ALL) {
+	    prevZdd = res;
+	    res = cuddZddGenerateNode(dd, expected, level-1, prevZdd, prevZdd, &use_rdr);
+	    cuddRef(res);
+	    if (use_rdr)
+		Cudd_RecursiveDerefZdd(dd, prevZdd);
+	    else
+		cuddDeref(prevZdd);
+	} else {
+	    for (ilevel = level-1; ilevel >= expected; ilevel--) {
+		prevZdd = res;
+		iindex = dd->invperm[ilevel];
+		res = cuddZddGetNode(dd, iindex, prevZdd, prevZdd);
+		if (res == NULL) {
+		    //	    printf("Null return #5\n");
+		    Cudd_RecursiveDerefZdd(dd, prevZdd);
+		    return(NULL);
+		}
+		cuddRef(res);
+		Cudd_RecursiveDerefZdd(dd, prevZdd);
+	    }
 	}
-	cuddRef(res);
-	Cudd_RecursiveDerefZdd(dd, prevZdd);
     }
 
     cuddDeref(res);
@@ -310,8 +337,8 @@ zddPortToBddStep(
   int  depth /* recursion depth */)
 {
     DdNode *one, *zero, *T, *E, *res, *var;
-    int index;
-    int level;
+    int index, bindex;
+    int level, blevel;
 
     statLine(dd);
     one = DD_ONE(dd);
@@ -322,6 +349,7 @@ zddPortToBddStep(
 
     index = dd->invpermZ[depth];
     level = cuddIZ(dd,f->index);
+
     var = cuddUniqueInter(dd,index,one,Cudd_Not(one));
     if (var == NULL) return(NULL);
     cuddRef(var);
@@ -352,13 +380,24 @@ zddPortToBddStep(
 	return(res);
     }
 
-    T = zddPortToBddStep(dd,cuddT(f),depth+1);
+    bindex = f->bindex;
+    blevel = cuddIZ(dd,bindex);
+
+    if (bindex != index) {
+	Cudd_RecursiveDeref(dd, var);
+	var = cuddUniqueInter(dd,bindex,one,Cudd_Not(one));
+	if (var == NULL)
+	    return NULL;
+	cuddRef(var);
+    }
+
+    T = zddPortToBddStep(dd,cuddT(f),blevel+1);
     if (T == NULL) {
 	Cudd_RecursiveDeref(dd,var);
 	return(NULL);
     }
     cuddRef(T);
-    E = zddPortToBddStep(dd,cuddE(f),depth+1);
+    E = zddPortToBddStep(dd,cuddE(f),blevel+1);
     if (E == NULL) {
 	Cudd_RecursiveDeref(dd,var);
 	Cudd_RecursiveDeref(dd,T);
