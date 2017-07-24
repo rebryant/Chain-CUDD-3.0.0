@@ -3180,7 +3180,7 @@ ddPrintMintermAux(
 {
     DdNode	 *N,*Nv,*Nnv;
     int		 i,v;
-    unsigned int index;
+    int level, blevel, jlevel, k;
 
     N = Cudd_Regular(node);
 
@@ -3205,12 +3205,24 @@ ddPrintMintermAux(
 	    Nv  = Cudd_Not(Nv);
 	    Nnv = Cudd_Not(Nnv);
 	}
-	index = N->index;
-	list[index] = 0;
+	level = cuddI(dd, N->index);
+	blevel = cuddI(dd, N->bindex);
+	/* Else case.  Create chain 0..0 */
+	for (k = level; k <= blevel; k++)
+	    list[cuddII(dd, k)] = 0;
 	ddPrintMintermAux(dd,Nnv,list);
-	list[index] = 1;
-	ddPrintMintermAux(dd,Nv,list);
-	list[index] = 2;
+	/* Then case.  Encode possibilities in the form 0..01-..- */
+	for (jlevel = blevel; jlevel >= level; jlevel--) {
+	    for (k = level; k < jlevel; k++)
+		list[cuddII(dd, k)] = 0;
+	    list[cuddII(dd, jlevel)] = 1;
+	    for (k = jlevel + 1; k <= blevel; k++)
+		list[cuddII(dd, k)] = 2;
+	    ddPrintMintermAux(dd,Nv,list);
+	}
+	/* Reset to don't cares */
+	for (k = level; k <= blevel; k++)
+	    list[cuddII(dd, k)] = 2;
     }
     return;
 

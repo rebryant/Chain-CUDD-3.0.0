@@ -76,8 +76,8 @@
 /* Static function prototypes                                                */
 /*---------------------------------------------------------------------------*/
 
-static int cuddZddCountStep (DdNode *P, st_table *table, DdNode *base, DdNode *empty);
-static double cuddZddCountDoubleStep (DdNode *P, st_table *table, DdNode *base, DdNode *empty);
+static int cuddZddCountStep (DdManager * zdd, DdNode *P, st_table *table, DdNode *base, DdNode *empty);
+static double cuddZddCountDoubleStep (DdManager *zdd, DdNode *P, st_table *table, DdNode *base, DdNode *empty);
 static enum st_retval st_zdd_countfree (void *key, void *value, void *arg);
 static enum st_retval st_zdd_count_dbl_free (void *key, void *value, void *arg);
 
@@ -112,7 +112,7 @@ Cudd_zddCount(
     empty = DD_ZERO(zdd);
     table = st_init_table(st_ptrcmp, st_ptrhash);
     if (table == NULL) return(CUDD_OUT_OF_MEM);
-    res = cuddZddCountStep(P, table, base, empty);
+    res = cuddZddCountStep(zdd, P, table, base, empty);
     if (res == CUDD_OUT_OF_MEM) {
 	zdd->errorCode = CUDD_MEMORY_OUT;
     }
@@ -150,7 +150,7 @@ Cudd_zddCountDouble(
     empty = DD_ZERO(zdd);
     table = st_init_table(st_ptrcmp, st_ptrhash);
     if (table == NULL) return((double)CUDD_OUT_OF_MEM);
-    res = cuddZddCountDoubleStep(P, table, base, empty);
+    res = cuddZddCountDoubleStep(zdd, P, table, base, empty);
     if (res == (double)CUDD_OUT_OF_MEM) {
 	zdd->errorCode = CUDD_MEMORY_OUT;
     }
@@ -180,6 +180,7 @@ Cudd_zddCountDouble(
 */
 static int
 cuddZddCountStep(
+  DdManager *zdd,		 
   DdNode * P,
   st_table * table,
   DdNode * base,
@@ -187,6 +188,8 @@ cuddZddCountStep(
 {
     int		res;
     int		*dummy;
+    unsigned int level, blevel;
+    int weight;
 
     if (P == empty)
 	return(0);
@@ -199,8 +202,14 @@ cuddZddCountStep(
 	return(res);
     }
 
-    res = cuddZddCountStep(cuddE(P), table, base, empty) +
-	cuddZddCountStep(cuddT(P), table, base, empty);
+    level = cuddIZ(zdd, P->index);
+    blevel = cuddIZ(zdd, P->bindex);
+
+    /* Compute effect of don't care levels */
+    weight = 1 << (blevel - level);
+
+    res = weight * (cuddZddCountStep(zdd, cuddE(P), table, base, empty) +
+		    cuddZddCountStep(zdd, cuddT(P), table, base, empty));
 
     dummy = ALLOC(int, 1);
     if (dummy == NULL) {
@@ -225,6 +234,7 @@ cuddZddCountStep(
 */
 static double
 cuddZddCountDoubleStep(
+  DdManager *zdd,
   DdNode * P,
   st_table * table,
   DdNode * base,
@@ -232,6 +242,8 @@ cuddZddCountDoubleStep(
 {
     double	res;
     double	*dummy;
+    unsigned int level, blevel;
+    double weight;
 
     if (P == empty)
 	return((double)0.0);
@@ -244,8 +256,15 @@ cuddZddCountDoubleStep(
 	return(res);
     }
 
-    res = cuddZddCountDoubleStep(cuddE(P), table, base, empty) +
-	cuddZddCountDoubleStep(cuddT(P), table, base, empty);
+    level = cuddIZ(zdd, P->index);
+    blevel = cuddIZ(zdd, P->bindex);
+
+    /* Compute effect of don't care levels */
+    weight = pow(2.0, blevel - level);
+
+
+    res = weight * (cuddZddCountDoubleStep(zdd, cuddE(P), table, base, empty) +
+		    cuddZddCountDoubleStep(zdd, cuddT(P), table, base, empty));
 
     dummy = ALLOC(double, 1);
     if (dummy == NULL) {

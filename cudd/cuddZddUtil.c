@@ -951,6 +951,8 @@ zdd_print_minterm_aux(
     int		i, v;
     DdNode	*base = DD_ONE(zdd);
 
+    int nlevel, nblevel;
+
     if (Cudd_IsConstantInt(node)) {
 	if (node == base) {
 	    /* Check for missing variable. */
@@ -976,25 +978,34 @@ zdd_print_minterm_aux(
 	    (void) fprintf(zdd->out," 1\n");
 	}
     } else {
-	/* Check for missing variable. */
-	if (level != cuddIZ(zdd,node->index)) {
+	nlevel = cuddIZ(zdd, node->index);
+	nblevel = cuddIZ(zdd, node->bindex);
+	if (level < nlevel) {
+	    /* Zero suppressed */
 	    list[zdd->invpermZ[level]] = 0;
 	    zdd_print_minterm_aux(zdd, node, level + 1, list);
 	    return;
 	}
-
-	Nnv = cuddE(node);
-	Nv = cuddT(node);
-	if (Nv == Nnv) {
-	    list[node->index] = 2;
-	    zdd_print_minterm_aux(zdd, Nnv, level + 1, list);
+	if (level < nblevel) {
+	    /* Don't care */
+	    list[zdd->invpermZ[level]] = 2;
+	    zdd_print_minterm_aux(zdd, node, level + 1, list);
 	    return;
 	}
 
-	list[node->index] = 1;
+	/* level == nblevel */
+	Nnv = cuddE(node);
+	Nv = cuddT(node);
+	if (Nv == Nnv) {
+	    list[node->bindex] = 2;
+	    zdd_print_minterm_aux(zdd, Nnv, level + 1, list);
+	    return;
+	}
+	list[node->bindex] = 1;
 	zdd_print_minterm_aux(zdd, Nv, level + 1, list);
-	list[node->index] = 0;
+	list[node->bindex] = 0;
 	zdd_print_minterm_aux(zdd, Nnv, level + 1, list);
+
     }
     return;
 
