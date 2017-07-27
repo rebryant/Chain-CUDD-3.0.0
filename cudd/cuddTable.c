@@ -882,8 +882,9 @@ cuddGarbageCollect(
 	    *lastP = sentinel;
 	}
 	if ((unsigned) deleted != unique->subtables[i].dead) {
+	    fprintf(unique->err, "GC.  Index = %d, Deleted = %d.  Dead = %d\n", i, deleted, unique->subtables[i].dead);
 	    ddReportRefMessDetailed(unique, i, "cuddGarbageCollect #1",
-				    (unsigned) deleted, unique->subtables[i].dead);
+				    unique->subtables[i].dead, (unsigned) deleted);
 	}
 	totalDeleted += deleted;
 	unique->subtables[i].keys -= deleted;
@@ -917,7 +918,7 @@ cuddGarbageCollect(
 	}
 	if ((unsigned) deleted != unique->constants.dead) {
 	    ddReportRefMessDetailed(unique, CUDD_CONST_INDEX, "cuddGarbageCollect #2",
-				    (unsigned) deleted, unique->constants.dead);
+				    unique->constants.dead, (unsigned) deleted);
 	}
 	totalDeleted += deleted;
 	unique->constants.keys -= deleted;
@@ -925,7 +926,7 @@ cuddGarbageCollect(
     }
     if ((unsigned) totalDeleted != unique->dead) {
 	ddReportRefMessDetailed(unique, -1, "cuddGarbageCollect #3",
-				(unsigned) totalDeleted, unique->dead);
+				unique->dead, (unsigned) totalDeleted);
     }
     unique->keys -= totalDeleted;
     unique->dead = 0;
@@ -965,7 +966,7 @@ cuddGarbageCollect(
 	}
 	if ((unsigned) deleted != unique->subtableZ[i].dead) {
 	    ddReportRefMessDetailed(unique, i, "cuddGarbageCollect #4",
-				    (unsigned) deleted, unique->subtableZ[i].dead);
+				    unique->subtableZ[i].dead, (unsigned) deleted);
 	}
 	totalDeletedZ += deleted;
 	unique->subtableZ[i].keys -= deleted;
@@ -977,7 +978,7 @@ cuddGarbageCollect(
     ** nodes we found there among the dead ZDD nodes. */
     if ((unsigned) totalDeletedZ != unique->deadZ) {
 	ddReportRefMessDetailed(unique, -1, "cuddGarbageCollect #5",
-				(unsigned) totalDeletedZ, unique->deadZ) ;
+				unique->deadZ, (unsigned) totalDeletedZ) ;
     }
     unique->keysZ -= totalDeletedZ;
     unique->deadZ = 0;
@@ -1064,8 +1065,14 @@ cuddZddGenerateNode(
     int nextbindex;
     int use_rdr = 0;
 
-    if (t == DD_ZERO(dd))
-	return (e);   /* Zero suppression rule */
+    if (t == DD_ZERO(dd)) {
+	/* Zero suppression rules */
+	if (index == bindex)
+	    return (e);
+	blevel = cuddIZ(dd, bindex);
+	nextbindex = cuddIIZ(dd, blevel - 1);
+	return cuddZddGenerateNode(dd, index, nextbindex, e, e, use_rdrp);
+    }
 
     /* See if can do chain compression */
     if (!Cudd_IsConstant(t) && t == e) {

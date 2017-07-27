@@ -1218,12 +1218,13 @@ zddBottom(
     blevel = CUDD_MAXINDEX;
     for (i = 0; i < n; i++) {
 	f = nodes[i];
-	if (Cudd_IsConstant(f))
+	if (f == DD_ZERO(dd))
 	    fblevel = CUDD_CONST_INDEX;
 	else if (levels[i] == top)
 	    fblevel = cuddIZ(dd,f->bindex);
 	else
-	    fblevel = levels[i]-1;
+	    fblevel = top;
+	//	    fblevel = levels[i]-1;  /* Old algorithm */
 	blevel = ddMin(blevel, fblevel);
     }
     return (blevel);
@@ -1314,7 +1315,7 @@ zddSimpleCofactorChained(
 	fvtn = cuddT(f);
 	fven = cuddE(f);
 	nindex = cuddIIZ(dd, blevel + 1);
-	fv = fvn = cuddUniqueInterChained(dd,(int)nindex,(int)fbindex,fvtn,fven);
+	fv = fvn = cuddUniqueInterZddChained(dd,(int)nindex,(int)fbindex,fvtn,fven);
 	if (fv == NULL) 
 	    return 0;
 #if 0

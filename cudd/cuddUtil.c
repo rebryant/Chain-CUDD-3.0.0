@@ -3111,13 +3111,19 @@ dp2(
     DdNode *g, *n, *N;
     int T,E;
 
+#if 0
+    ptruint scale = sizeof(DdNode);
+#else
+    ptruint scale = 1;
+#endif
+
     if (f == NULL) {
 	return(0);
     }
     g = Cudd_Regular(f);
     if (cuddIsConstant(g)) {
 	(void) fprintf(dd->out,"ID = %c0x%" PRIxPTR "\tvalue = %-9g\n", bang(f),
-		(ptruint) g / (ptruint) sizeof(DdNode),cuddV(g));
+		(ptruint) g / scale,cuddV(g));
 	return(1);
     }
     if (st_is_member(t,g) == 1) {
@@ -3128,10 +3134,10 @@ dp2(
     // Chaining support
 #ifdef DD_STATS
     (void) fprintf(dd->out,"ID = %c0x%"PRIxPTR"\tindex = %d\tbindex = %d\tr = %d\t", bang(f),
-		   (ptruint) g / (ptruint) sizeof(DdNode), g->index, g->bindex, g->ref);
+		   (ptruint) g / scale, g->index, g->bindex, g->ref);
 #else
     (void) fprintf(dd->out,"ID = %c0x%" PRIxPTR "\tindex = %u\tbindex = %d\t", bang(f),
-		   (ptruint) g / (ptruint) sizeof(DdNode),g->index, g->bindex);
+		   (ptruint) g / scale,g->index, g->bindex);
 #endif
     n = cuddT(g);
     if (cuddIsConstant(n)) {
@@ -3139,7 +3145,7 @@ dp2(
 	T = 1;
     } else {
 	(void) fprintf(dd->out,"T = 0x%" PRIxPTR "\t",
-                       (ptruint) n / (ptruint) sizeof(DdNode));
+                       (ptruint) n / scale);
 	T = 0;
     }
 
@@ -3150,7 +3156,7 @@ dp2(
 	E = 1;
     } else {
 	(void) fprintf(dd->out,"E = %c0x%" PRIxPTR "\n",
-                       bang(n), (ptruint) N/(ptruint) sizeof(DdNode));
+                       bang(n), (ptruint) N/scale);
 	E = 0;
     }
     if (E == 0) {

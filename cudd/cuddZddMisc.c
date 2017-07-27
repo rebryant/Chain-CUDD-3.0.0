@@ -159,6 +159,12 @@ Cudd_zddPrintSubtable(
     DdNode	*z1, *z1_next, *base;
     DdSubtable	*ZSubTable;
 
+#if 0
+    ptruint scale = sizeof(DdNode);
+#else
+    ptruint scale = 1;
+#endif
+
     base = table->one;
     for (i = table->sizeZ - 1; i >= 0; i--) {
 	ZSubTable = &(table->subtableZ[i]);
@@ -168,7 +174,7 @@ Cudd_zddPrintSubtable(
 	    while (z1 != NIL(DdNode)) {
 		(void) fprintf(table->out,
 		    "ID = 0x%" PRIxPTR "\tindex = %u\tbindex = %u\tr = %u\t",
-			       (ptruint) z1 / (ptruint) sizeof(DdNode),
+			       (ptruint) z1 / scale,
 			       z1->index, z1->bindex, z1->ref);
 		z1_next = cuddT(z1);
 		if (Cudd_IsConstantInt(z1_next)) {
@@ -177,7 +183,7 @@ Cudd_zddPrintSubtable(
 		}
 		else {
 		    (void) fprintf(table->out, "T = 0x%" PRIxPTR "\t",
-			(ptruint) z1_next / (ptruint) sizeof(DdNode));
+			(ptruint) z1_next / scale);
 		}
 		z1_next = cuddE(z1);
 		if (Cudd_IsConstantInt(z1_next)) {
@@ -186,7 +192,7 @@ Cudd_zddPrintSubtable(
 		}
 		else {
 		    (void) fprintf(table->out, "E = 0x%" PRIxPTR "\n",
-			(ptruint) z1_next / (ptruint) sizeof(DdNode));
+			(ptruint) z1_next / scale);
 		}
 
 		z1_next = z1->next;

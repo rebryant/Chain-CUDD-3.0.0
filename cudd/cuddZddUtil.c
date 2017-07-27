@@ -889,6 +889,12 @@ zp2(
     int		T, E;
     DdNode	*base = DD_ONE(zdd);
 
+#if 0
+    ptruint scale = sizeof(DdNode);
+#else
+    ptruint scale = 1;
+#endif
+
     if (f == NULL)
 	return(0);
 
@@ -903,7 +909,7 @@ zp2(
 	return(0);
 
     (void) fprintf(zdd->out, "ID = 0x%" PRIxPTR "\tindex = %u\tbindex = %u\tr = %u\t",
-		   (ptruint)f / (ptruint) sizeof(DdNode), f->index, f->bindex, f->ref);
+		   (ptruint)f / scale, f->index, f->bindex, f->ref);
 
     n = cuddT(f);
     if (Cudd_IsConstantInt(n)) {
@@ -911,7 +917,7 @@ zp2(
 	T = 1;
     } else {
 	(void) fprintf(zdd->out, "T = 0x%" PRIxPTR "\t", (ptruint) n /
-		       (ptruint) sizeof(DdNode));
+		       scale);
 	T = 0;
     }
 
@@ -921,7 +927,7 @@ zp2(
 	E = 1;
     } else {
 	(void) fprintf(zdd->out, "E = 0x%" PRIxPTR "\n", (ptruint) n /
-		      (ptruint) sizeof(DdNode));
+		      scale);
 	E = 0;
     }
 

@@ -557,13 +557,25 @@ cuddReclaim(
 	if (N->ref == 0) {
 	    N->ref = 1;
 	    table->dead--;
+	    if ((int) table->dead < 0) {
+		fprintf(table->err, "Negative dead count.  Node = %p.  Index = %d.  Dead count = %d\n",
+			n, N->index, (int) table->dead);
+	    }
 	    if (cuddIsConstant(N)) {
 		table->constants.dead--;
+		if ((int) table->constants.dead < 0) {
+		    fprintf(table->err, "Negative constant subtable dead count.  Node = %p. Dead count = %d\n",
+			    n, (int) table->constants.dead);
+		}
 		N = stack[--SP];
 	    } else {
 		ord = table->perm[N->index];
 		stack[SP++] = Cudd_Regular(cuddE(N));
 		table->subtables[ord].dead--;
+		if ((int) table->subtables[ord].dead < 0) {
+		    fprintf(table->err, "Negative subtable dead count.  Node = %p.  Level = %d.  Dead count = %d\n",
+			    n, ord, (int) table->subtables[ord].dead);
+		}
 		N = cuddT(N);
 	    }
 	} else {
@@ -574,6 +586,9 @@ cuddReclaim(
 
     N = Cudd_Regular(n);
     cuddSatDec(N->ref);
+    if ((int) N->ref < 0) {
+	fprintf(table->err, "Negative reference count!.  Node = %p.  Count = %d\n", N, (int) N->ref);
+    }
     table->reclaimed += initialDead - table->dead;
 
 } /* end of cuddReclaim */
@@ -615,6 +630,11 @@ cuddReclaimZdd(
 	    ord = table->permZ[N->index];
 	    stack[SP++] = cuddE(N);
 	    table->subtableZ[ord].dead--;
+	    if ((int) table->subtableZ[ord].dead < 0) {
+		fprintf(table->err, "Negative ZDD subtable dead count.  Node = %p.  Level = %d.  Dead count = %d\n",
+			    n, ord, (int) table->subtableZ[ord].dead);
+		}
+
 	    N = cuddT(N);
 	} else {
 	    N = stack[--SP];
