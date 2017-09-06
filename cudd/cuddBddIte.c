@@ -115,7 +115,7 @@ Cudd_bddIte(
   DdNode * h /**< third operand */)
 {
     DdNode *res;
-
+    
     do {
 	dd->reordered = 0;
 	res = cuddBddIteRecur(dd,f,g,h);
@@ -770,10 +770,13 @@ cuddBddIteRecur(
 
     /* A shortcut: ITE(F,G,H) = (t:b,G,H) if F = (t:b,1,0), b < top(G,H). */
     if (botf < topg && botf < toph && cuddT(f) == one && cuddE(f) == zero) {
-	r = cuddUniqueInterChained(dd, (int) f->index, (int) f->bindex, g, h);
-	if (r == NULL)
-	    goto cleanup;
-	return(Cudd_NotCond(r,comple));
+        cuddRef(g);
+        r = bddGenerateNode(dd, f->index, f->bindex, g, h, &use_idr[deref_cnt]);
+        deref_set[deref_cnt++] = g;
+	if (r != NULL)
+            r = Cudd_NotCond(r,comple);
+        goto cleanup;
+
     }
 
     /* Check cache. */
@@ -1500,8 +1503,7 @@ bddSimpleCofactorChained(
 	Fnv = cuddUniqueInterChained(dd,(int)nindex,(int)fbindex,fnvt,fnve);
 	if (Fnv == NULL) 
 	    return 0;
-	//	printf("Cofactored node %p with indices %d:%d into one %p with indices %d:%d\n",
-	//	       f, findex, fbindex, Fnv, nindex, fbindex);
+
 	/* Create reference for it */
 	cuddRef(Fnv);
 	new_ref = 1;
@@ -1561,9 +1563,6 @@ bddGenerateNode(
 		r = cuddUniqueInterChained(dd,(int)index,(int)ebindex,t,ee);
 		cuddDeref(ee);
 		use_idr = 1;
-		//		printf("Chained %u:%u+%u:%u.  Replace %p by %p\n",
-		//		cuddI(dd,index), blevel, elevel, cuddI(dd,ebindex),
-		//		       e, ee);
 	    }
 	}
     }

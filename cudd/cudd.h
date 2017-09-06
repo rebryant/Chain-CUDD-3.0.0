@@ -98,7 +98,8 @@
 typedef enum {
     CUDD_CHAIN_NONE,
     CUDD_CHAIN_CONSTANT,
-    CUDD_CHAIN_ALL
+    CUDD_CHAIN_ALL,
+    CUDD_CHAIN_ZERO
 } Cudd_ChainingType;
 
 
