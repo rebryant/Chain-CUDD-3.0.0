@@ -553,6 +553,36 @@ Cudd_addOr(
 
 
 /**
+  @brief AND of two 0-1 ADDs.
+
+  @return NULL if not a terminal case; f AND g otherwise.
+
+  @sideeffect None
+
+  @see Cudd_addApply
+
+*/
+DdNode *
+Cudd_addAnd(
+  DdManager * dd,
+  DdNode ** f,
+  DdNode ** g)
+{
+    DdNode *F, *G;
+
+    F = *f; G = *g;
+    if (F == DD_ZERO(dd) || G == DD_ZERO(dd)) return(DD_ZERO(dd));
+    if (cuddIsConstant(F) && cuddIsConstant(G)) return(DD_ONE(dd));
+    if (F > G) { /* swap f and g */
+	*f = G;
+	*g = F;
+    }
+    return(NULL);
+
+} /* end of Cudd_addAnd */
+
+
+/**
   @brief NAND of two 0-1 ADDs.
 
   @return NULL if not a terminal case; f NAND g otherwise.
