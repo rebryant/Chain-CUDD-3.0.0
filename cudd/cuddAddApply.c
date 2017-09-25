@@ -572,7 +572,9 @@ Cudd_addAnd(
 
     F = *f; G = *g;
     if (F == DD_ZERO(dd) || G == DD_ZERO(dd)) return(DD_ZERO(dd));
-    if (cuddIsConstant(F) && cuddIsConstant(G)) return(DD_ONE(dd));
+    if (cuddIsConstant(F)) return (G);
+    if (cuddIsConstant(G)) return (F);
+    if (F == G) return(F);
     if (F > G) { /* swap f and g */
 	*f = G;
 	*g = F;
