@@ -690,6 +690,7 @@ extern DdNode * Cudd_addOneZeroMaximum(DdManager *dd, DdNode **f, DdNode **g);
 extern DdNode * Cudd_addDiff(DdManager *dd, DdNode **f, DdNode **g);
 extern DdNode * Cudd_addAgreement(DdManager *dd, DdNode **f, DdNode **g);
 extern DdNode * Cudd_addOr(DdManager *dd, DdNode **f, DdNode **g);
+extern DdNode * Cudd_addAnd(DdManager *dd, DdNode **f, DdNode **g);
 extern DdNode * Cudd_addNand(DdManager *dd, DdNode **f, DdNode **g);
 extern DdNode * Cudd_addNor(DdManager *dd, DdNode **f, DdNode **g);
 extern DdNode * Cudd_addXor(DdManager *dd, DdNode **f, DdNode **g);
