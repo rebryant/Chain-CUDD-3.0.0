@@ -428,8 +428,12 @@ cuddAddIteRecur(
 {
     DdNode *one,*zero;
     DdNode *r,*Fv,*Fnv,*Gv,*Gnv,*Hv,*Hnv,*t,*e;
-    int topf,topg,toph,v;
-    unsigned int index;
+    DdNode *nodes[3], *deref_set[4];
+    int index, bindex;
+    unsigned int levels[3], level, blevel;
+    unsigned int topg, toph, botf;
+    int full_deref[4];
+    int i, deref_cnt = 0;
 
     statLine(dd);
     /* Trivial cases. */
@@ -454,19 +458,22 @@ cuddAddIteRecur(
         if (h == zero) return(f);
     }
 
-    topf = cuddI(dd,f->index);
-    topg = cuddI(dd,g->index);
-    toph = cuddI(dd,h->index);
-    v = ddMin(topg,toph);
+    nodes[0] = f; nodes[1] = g; nodes[2] = h;
+    level = cuddBddTop(dd, 3, nodes, levels);
+    index = cuddII(dd, level);
+    topg = levels[1]; toph = levels[2];
 
-    /* A shortcut: ITE(F,G,H) = (x,G,H) if F=(x,1,0), x < top(G,H). */
-    if (topf < v && cuddT(f) == one && cuddE(f) == zero) {
-	r = cuddUniqueInter(dd,(int)f->index,g,h);
-	return(r);
-    }
-    if (topf < v && cuddT(f) == zero && cuddE(f) == one) {
-	r = cuddUniqueInter(dd,(int)f->index,h,g);
-	return(r);
+    /* Chaining support */
+    blevel = cuddBddBottom(dd, 3, nodes, levels, level);
+    bindex = cuddII(dd,blevel);
+    botf = levels[0];
+
+    /* A shortcut: ITE(F,G,H) = (t:b,G,H) if F=(t:b,1,0), b < top(G,H). */
+    if (botf < topg && botf < toph && cuddT(f) == one && cuddE(f) == zero) {
+	cuddRef(g);
+	r = cuddBddGenerateNode(dd, f->index, f->bindex, g, h, &full_deref[deref_cnt]);
+	deref_set[deref_cnt++] = g;
+	goto cleanup;
     }
 
     /* Check cache. */
@@ -477,51 +484,65 @@ cuddAddIteRecur(
 
     checkWhetherToGiveUp(dd);
 
+    /* r is not NULL */
+
     /* Compute cofactors. */
-    index = f->index;
-    if (topf <= v) {
-	v = ddMin(topf,v);	/* v = top_var(F,G,H) */
-        Fv = cuddT(f); Fnv = cuddE(f);
-    } else {
-        Fv = Fnv = f;
+    if (cuddBddSimpleCofactor(dd,f,blevel,&Fv,&Fnv)) {
+	full_deref[deref_cnt] = 1;
+	deref_set[deref_cnt++] = Fnv;
     }
-    if (topg == v) {
-	index = g->index;
-        Gv = cuddT(g); Gnv = cuddE(g);
-    } else {
-        Gv = Gnv = g;
+    if (Fnv == NULL)
+	goto cleanup;
+
+    if (cuddBddSimpleCofactor(dd,g,blevel,&Gv,&Gnv)) {
+	full_deref[deref_cnt] = 1;
+	deref_set[deref_cnt++] = Gnv;
     }
-    if (toph == v) {
-	index = h->index;
-        Hv = cuddT(h); Hnv = cuddE(h);
-    } else {
-        Hv = Hnv = h;
+    if (Gnv == NULL)
+	goto cleanup;
+
+    if (cuddBddSimpleCofactor(dd,h,blevel,&Hv,&Hnv)) {
+	full_deref[deref_cnt] = 1;
+	deref_set[deref_cnt++] = Hnv;
     }
-    
+    if (Hnv == NULL)
+	goto cleanup;
+
     /* Recursive step. */
     t = cuddAddIteRecur(dd,Fv,Gv,Hv);
-    if (t == NULL) return(NULL);
+    if (t == NULL)
+	goto cleanup;
     cuddRef(t);
+    full_deref[deref_cnt] = 0;
+    deref_set[deref_cnt++] = t;
 
     e = cuddAddIteRecur(dd,Fnv,Gnv,Hnv);
-    if (e == NULL) {
-	Cudd_RecursiveDeref(dd,t);
-	return(NULL);
-    }
+    if (e == NULL)
+	goto cleanup;
     cuddRef(e);
 
-    r = (t == e) ? t : cuddUniqueInter(dd,index,t,e);
+    r = cuddBddGenerateNode(dd,index,bindex,t,e, &full_deref[deref_cnt]);
+    deref_set[deref_cnt++] = e;
+
+
+ cleanup:
+    /* Dereference intermediate nodes */
     if (r == NULL) {
-	Cudd_RecursiveDeref(dd,t);
-	Cudd_RecursiveDeref(dd,e);
-	return(NULL);
+	for (i = 0; i < deref_cnt; i++)
+	    Cudd_RecursiveDeref(dd, deref_set[i]);
+	return r;
+    } else {
+	cuddRef(r);
+	for (i = 0; i < deref_cnt; i++) {
+	    if (full_deref[i])
+		Cudd_RecursiveDeref(dd, deref_set[i]);
+	    else
+		cuddDeref(deref_set[i]);
+	}
+	cuddCacheInsert(dd,DD_ADD_ITE_TAG,f,g,h,r);
+	cuddDeref(r);
+	return r;
     }
-    cuddDeref(t);
-    cuddDeref(e);
-
-    cuddCacheInsert(dd,DD_ADD_ITE_TAG,f,g,h,r);
-
-    return(r);
 
 } /* end of cuddAddIteRecur */
 
@@ -572,7 +593,7 @@ cuddAddCmplRecur(
 	return(NULL);
     }
     cuddRef(e);
-    r = (t == e) ? t : cuddUniqueInter(dd,(int)f->index,t,e);
+    r = (t == e) ? t : cuddUniqueInterChained(dd,(int)f->index,(int)f->bindex,t,e);
     if (r == NULL) {
 	Cudd_RecursiveDeref(dd, t);
 	Cudd_RecursiveDeref(dd, e);

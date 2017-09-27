@@ -789,11 +789,14 @@ cuddAddApplyRecur(
   DdNode * g)
 {
     DdNode *res,
-	   *fv, *fvn, *gv, *gvn,
-	   *T, *E;
-    int ford, gord;
-    unsigned int index;
+	   *fv, *fnv, *gv, *gnv,
+	*T, *E, *nodes[2];
+    int index, bindex;
+    unsigned int levels[2], level, blevel;
     DD_CTFP cacheOp;
+    DdNode *deref_set[4];
+    int full_deref[4];
+    int i, deref_cnt = 0;
 
     /* Check terminal cases. Op may swap f and g to increase the
      * cache hit rate.
@@ -810,45 +813,57 @@ cuddAddApplyRecur(
     checkWhetherToGiveUp(dd);
 
     /* Recursive step. */
-    ford = cuddI(dd,f->index);
-    gord = cuddI(dd,g->index);
-    if (ford <= gord) {
-	index = f->index;
-	fv = cuddT(f);
-	fvn = cuddE(f);
-    } else {
-	index = g->index;
-	fv = fvn = f;
+    nodes[0] = f; nodes[1] = g;
+    level = cuddBddTop(dd, 2, nodes, levels);
+    index = cuddII(dd, level);
+    blevel = cuddBddBottom(dd, 2, nodes, levels, level);
+    bindex = cuddII(dd, blevel);
+
+    /* Compute cofactors */
+    if (cuddBddSimpleCofactor(dd, f, blevel, &fv, &fnv)) {
+	full_deref[deref_cnt] = 1;
+	deref_set[deref_cnt++] = fnv;
     }
-    if (gord <= ford) {
-	gv = cuddT(g);
-	gvn = cuddE(g);
-    } else {
-	gv = gvn = g;
+    if (fnv == NULL)
+	goto cleanup;
+
+    if (cuddBddSimpleCofactor(dd, g, blevel, &gv, &gnv)) {
+	full_deref[deref_cnt] = 1;
+	deref_set[deref_cnt++] = gnv;
     }
+    if (gnv == NULL)
+	goto cleanup;
 
     T = cuddAddApplyRecur(dd,op,fv,gv);
-    if (T == NULL) return(NULL);
+    if (T == NULL) 
+	goto cleanup;
     cuddRef(T);
+    full_deref[deref_cnt] = 1;
+    deref_set[deref_cnt++] = T;
 
-    E = cuddAddApplyRecur(dd,op,fvn,gvn);
-    if (E == NULL) {
-	Cudd_RecursiveDeref(dd,T);
-	return(NULL);
-    }
+    E = cuddAddApplyRecur(dd,op,fnv,gnv);
+    if (E == NULL)
+	goto cleanup;
     cuddRef(E);
 
-    res = (T == E) ? T : cuddUniqueInter(dd,(int)index,T,E);
-    if (res == NULL) {
-	Cudd_RecursiveDeref(dd, T);
-	Cudd_RecursiveDeref(dd, E);
-	return(NULL);
-    }
-    cuddDeref(T);
-    cuddDeref(E);
+    res = cuddBddGenerateNode(dd, index, bindex, T, E, &full_deref[deref_cnt]);
+    deref_set[deref_cnt++] = E;
 
-    /* Store result. */
-    cuddCacheInsert2(dd,cacheOp,f,g,res);
+ cleanup:
+    if (res == NULL) {
+	for (i = 0; i < deref_cnt; i++)
+	    Cudd_RecursiveDeref(dd, deref_set[i]);
+
+    } else {
+	for (i = 0; i < deref_cnt; i++) {
+	    if (full_deref[i])
+		Cudd_RecursiveDeref(dd, deref_set[i]);
+	    else
+		cuddDeref(deref_set[i]);
+	}
+	/* Store result. */
+	cuddCacheInsert2(dd,cacheOp,f,g,res);
+    }
 
     return(res);
 
@@ -871,8 +886,9 @@ cuddAddMonadicApplyRecur(
   DD_MAOP op,
   DdNode * f)
 {
-    DdNode *res, *ft, *fe, *T, *E;
-    unsigned int index;
+    DdNode *res, *ft, *fe, *T, *E, *deref_set[2];
+    int index, bindex;
+    int i, full_deref[2], deref_cnt = 0;
 
     /* Check terminal cases. */
     statLine(dd);
@@ -887,31 +903,41 @@ cuddAddMonadicApplyRecur(
 
     /* Recursive step. */
     index = f->index;
+    bindex = f->bindex;
+
     ft = cuddT(f);
     fe = cuddE(f);
 
     T = cuddAddMonadicApplyRecur(dd,op,ft);
-    if (T == NULL) return(NULL);
+    if (T == NULL)
+	goto cleanup;
     cuddRef(T);
+    full_deref[deref_cnt] = 1;
+    deref_set[deref_cnt++] = T;
 
     E = cuddAddMonadicApplyRecur(dd,op,fe);
-    if (E == NULL) {
-	Cudd_RecursiveDeref(dd,T);
-	return(NULL);
-    }
+    if (E == NULL)
+	goto cleanup;
     cuddRef(E);
 
-    res = (T == E) ? T : cuddUniqueInter(dd,(int)index,T,E);
-    if (res == NULL) {
-	Cudd_RecursiveDeref(dd, T);
-	Cudd_RecursiveDeref(dd, E);
-	return(NULL);
-    }
-    cuddDeref(T);
-    cuddDeref(E);
+    res = cuddBddGenerateNode(dd, index, bindex, T, E, &full_deref[deref_cnt]);
+    deref_set[deref_cnt++] = E;
 
-    /* Store result. */
-    cuddCacheInsert1(dd,op,f,res);
+ cleanup:
+    if (res == NULL) {
+	for (i = 0; i < deref_cnt; i++)
+	    Cudd_RecursiveDeref(dd, deref_set[i]);
+
+    } else {
+	for (i = 0; i < deref_cnt; i++) {
+	    if (full_deref[i])
+		Cudd_RecursiveDeref(dd, deref_set[i]);
+	    else
+		cuddDeref(deref_set[i]);
+	}
+	/* Store result. */
+	cuddCacheInsert1(dd,op,f,res);
+    }
 
     return(res);
 

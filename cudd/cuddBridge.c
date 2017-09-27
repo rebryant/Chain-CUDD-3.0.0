@@ -875,7 +875,7 @@ ddBddToAddRecur(
     cuddRef(E);
 
     /* No need to check for T == E, because it is guaranteed not to happen. */
-    res = cuddUniqueInter(dd, (int) Cudd_Regular(B)->index, T, E);
+    res = cuddUniqueInterChained(dd, (int) Cudd_Regular(B)->index, (int) Cudd_Regular(B)->bindex, T, E);
     if (res == NULL) {
 	Cudd_RecursiveDeref(dd ,T);
 	Cudd_RecursiveDeref(dd ,E);

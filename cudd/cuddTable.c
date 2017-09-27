@@ -1041,9 +1041,85 @@ cuddGarbageCollect(
 
 ` @returns pointer to appropriate node
 
+  @sideeffect Stores any newly generated node in unique table.
+  Sets *compressedp if new node created via chain compression
+
+  @see cuddUniqueInterChained
+
+*/
+
+DdNode *
+cuddBddGenerateNode(
+  DdManager * dd,
+  int index,
+  int bindex,
+  DdNode *t,
+  DdNode *e,
+  int    *compressedp)
+{
+    DdNode *r = NULL;
+    int comple;
+    DdNode *et, *ee;
+    unsigned int blevel, elevel;
+    int ebindex;
+    int compressed = 0;
+
+    if (t == e) {
+	if (compressedp)
+	    *compressedp = 0;
+	return (t);   /* Don't care reduction rule */
+    }
+    comple = Cudd_IsComplement(t);
+    if (comple) {
+	t = Cudd_Not(t);
+	e = Cudd_Not(e);
+    }
+
+    /* See if can do chain compression */
+    if (!Cudd_IsConstant(e) && !Cudd_IsComplement(e)) {
+	et = Cudd_T(e);
+	if (et == t &&
+	    (dd->chaining == CUDD_CHAIN_ALL ||
+	     (dd->chaining == CUDD_CHAIN_CONSTANT && Cudd_IsConstant(t)))) {
+	    blevel = cuddI(dd,bindex);
+	    elevel = cuddI(dd,e->index);
+	    if (elevel == blevel+1) {
+		ebindex = e->bindex;
+		ee = Cudd_E(e);
+		cuddRef(ee);
+		r = cuddUniqueInterChained(dd,(int)index,(int)ebindex,t,ee);
+		cuddDeref(ee);
+		compressed = 1;
+	    }
+	}
+    }
+
+    if (r == NULL) {
+	r = cuddUniqueInterChained(dd,(int)index,(int)bindex,t,e);
+	if (r == NULL) {
+	    Cudd_IterDerefBdd(dd, t);
+	    Cudd_IterDerefBdd(dd, e);
+	    if (compressedp)
+		*compressedp = 0;
+	    return(NULL);
+	}
+    }
+    if (comple)
+	r = Cudd_Not(r);
+
+    if (compressedp)
+	*compressedp = compressed;
+
+    return(r);
+} /* End of cuddBddGenerateNode */
+
+/**
+  @brief Find or generate node with specified index, bindex, and children
+
+` @returns pointer to appropriate node
+
   @sideeffect Stores any newly generated node in unique table.  If
-  use_rdrp valid, then set to 1 if e should be removed by recursive
-  dereference.
+  compressedp valid, then set to 1 if chain compression applied to generate node.
   
   @see cuddUniqueInter
 
@@ -1056,22 +1132,25 @@ cuddZddGenerateNode(
   int bindex,
   DdNode *t,
   DdNode *e,
-  int    *use_rdrp)
+  int    *compressedp)
 {
     DdNode *r = NULL;
 
     DdNode *nextt, *nexte;
     unsigned int blevel, nextlevel;
     int nextbindex;
-    int use_rdr = 0;
+    int compressed = 0;
 
     if (t == DD_ZERO(dd)) {
 	/* Zero suppression rules */
-	if (index == bindex)
+	if (index == bindex) {
+	    if (compressedp)
+		*compressedp = 0;
 	    return (e);
+	}
 	blevel = cuddIZ(dd, bindex);
 	nextbindex = cuddIIZ(dd, blevel - 1);
-	return cuddZddGenerateNode(dd, index, nextbindex, e, e, use_rdrp);
+	return cuddZddGenerateNode(dd, index, nextbindex, e, e, compressedp);
     }
 
     /* See if can do chain compression */
@@ -1089,7 +1168,7 @@ cuddZddGenerateNode(
 		r = cuddUniqueInterZddChained(dd,(int)index,(int)nextbindex,nextt,nexte);
 		cuddDeref(nextt);
 		cuddDeref(nexte);
-		use_rdr = 1;
+		compressed = 1;
 #if 0
 		printf("Chained %u:%u+%u:%u.\n",
 		       cuddI(dd,index), blevel, nextlevel, cuddIZ(dd,nextbindex));
@@ -1103,14 +1182,14 @@ cuddZddGenerateNode(
 	if (r == NULL) {
 	    Cudd_RecursiveDerefZdd(dd, t);
 	    Cudd_RecursiveDerefZdd(dd, e);
-	    if (use_rdrp)
-		*use_rdrp = 0;
+	    if (compressedp)
+		*compressedp = 0;
 	    return(NULL);
 	}
     }
 
-    if (use_rdrp)
-	*use_rdrp = use_rdr;
+    if (compressedp)
+	*compressedp = compressed;
 
     return(r);
 } /* End of cuddZddGenerateNode */

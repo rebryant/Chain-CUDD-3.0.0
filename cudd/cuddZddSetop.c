@@ -434,7 +434,7 @@ cuddZddIte(
     unsigned int level, blevel, levels[3];
     unsigned int index, bindex;
     DdNode       *deref_set[6];
-    int          use_rdr[6];
+    int          full_deref[6];
     int          i, deref_cnt = 0;
 
 
@@ -484,15 +484,15 @@ cuddZddIte(
 
     /* Refactored */
     if (zddSimpleCofactorChained(dd, f, blevel, &Fv, &Fvn)) {
-	use_rdr[deref_cnt] = 1;
+	full_deref[deref_cnt] = 1;
 	deref_set[deref_cnt++] = Fv;
     }
     if (zddSimpleCofactorChained(dd, g, blevel, &Gv, &Gvn)) {
-	use_rdr[deref_cnt] = 1;
+	full_deref[deref_cnt] = 1;
 	deref_set[deref_cnt++] = Gv;
     }
     if (zddSimpleCofactorChained(dd, h, blevel, &Hv, &Hvn)) {
-	use_rdr[deref_cnt] = 1;
+	full_deref[deref_cnt] = 1;
 	deref_set[deref_cnt++] = Hv;
     }
     
@@ -500,7 +500,7 @@ cuddZddIte(
     if (t == NULL)
 	goto cleanup;
     cuddRef(t);
-    use_rdr[deref_cnt] = 0;
+    full_deref[deref_cnt] = 0;
     deref_set[deref_cnt++] = t;
 
     e = cuddZddIte(dd, Fvn, Gvn, Hvn);
@@ -508,7 +508,7 @@ cuddZddIte(
 	goto cleanup;
     cuddRef(e);
 
-    r = cuddZddGenerateNode(dd,index,bindex,t,e, &use_rdr[deref_cnt]);
+    r = cuddZddGenerateNode(dd,index,bindex,t,e, &full_deref[deref_cnt]);
     deref_set[deref_cnt++] = e;
 
  cleanup:
@@ -518,7 +518,7 @@ cuddZddIte(
     } else {
 	cuddRef(r);
 	for (i = 0; i < deref_cnt; i++)
-	    if (use_rdr[i])
+	    if (full_deref[i])
 		Cudd_RecursiveDerefZdd(dd, deref_set[i]);
 	    else
 		cuddDeref(deref_set[i]);
@@ -977,10 +977,10 @@ cuddZddSetop2(
 {
     DdNode      *tautology, *t, *e, *r;
     unsigned int level, blevel, levels[2];
-    unsigned int index, bindex;
+    int index, bindex;
     DdNode *Pv, *Pvn, *Qv, *Qvn, *nodes[2];
     DdNode *deref_set[5];
-    int use_rdr[5];
+    int full_deref[5];
     int i, deref_cnt = 0;
 
     statLine(dd);
@@ -1021,11 +1021,11 @@ cuddZddSetop2(
 
     /* Refactored */
     if (zddSimpleCofactorChained(dd, P, blevel, &Pv, &Pvn)) {
-	use_rdr[deref_cnt] = 1;
+	full_deref[deref_cnt] = 1;
 	deref_set[deref_cnt++] = Pv;
     }
     if (zddSimpleCofactorChained(dd, Q, blevel, &Qv, &Qvn)) {
-	use_rdr[deref_cnt] = 1;
+	full_deref[deref_cnt] = 1;
 	deref_set[deref_cnt++] = Qv;
     }
 
@@ -1033,7 +1033,7 @@ cuddZddSetop2(
     if (t == NULL)
 	goto cleanup;
     cuddRef(t);
-    use_rdr[deref_cnt] = 0;
+    full_deref[deref_cnt] = 0;
     deref_set[deref_cnt++] = t;
 
     e = cuddZddSetop2(dd, Pvn, Qvn, cfun, fun);
@@ -1041,7 +1041,7 @@ cuddZddSetop2(
 	goto cleanup;
     cuddRef(e);
 
-    r = cuddZddGenerateNode(dd,index,bindex,t,e, &use_rdr[deref_cnt]);
+    r = cuddZddGenerateNode(dd,index,bindex,t,e, &full_deref[deref_cnt]);
     deref_set[deref_cnt++] = e;
 
  cleanup:
@@ -1051,7 +1051,7 @@ cuddZddSetop2(
     } else {
 	cuddRef(r);
 	for (i = 0; i < deref_cnt; i++)
-	    if (use_rdr[i])
+	    if (full_deref[i])
 		Cudd_RecursiveDerefZdd(dd, deref_set[i]);
 	    else
 		cuddDeref(deref_set[i]);
