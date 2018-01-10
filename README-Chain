@@ -9,3 +9,14 @@ ADDs should also work.  Those that involve quantification do not.
 Dynamic variable ordering is not supported.
 
 
+INSTALLATION NOTE:
+
+If you retrieved the code via git, then the file dates will be
+incorrect.  This can lead to problems with autoconfiguration, and
+possibly cause the make command to fail.  The quick work around is to
+execute the command:
+
+
+	 touch Makefile.am Makefile.in aclocal.m4
+
+before executing the make command.
