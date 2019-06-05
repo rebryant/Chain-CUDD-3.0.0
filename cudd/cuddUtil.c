@@ -102,7 +102,7 @@ static int ddEpdCountMintermAux (DdManager const *dd, DdNode *node, EpDouble *ma
 static long double ddLdblCountMintermAux(DdManager const *manager, DdNode *node, long double max, st_table *table);
 static double ddCountPathAux (DdNode *node, st_table *table);
 static double ddCountPathsToNonZero (DdNode * N, st_table * table);
-static void ddSupportStep (DdNode *f, int *support);
+static void ddSupportStep (DdManager *dd, DdNode *f, int *support);
 static void ddClearFlag (DdNode *f);
 static int ddLeavesInt (DdNode *n);
 static int ddPickArbitraryMinterms (DdManager *dd, DdNode *node, int nvars, int nminterms, char **string);
@@ -944,7 +944,7 @@ Cudd_SupportIndex(
     }
 
     /* Compute support and clean up markers. */
-    ddSupportStep(Cudd_Regular(f),support);
+    ddSupportStep(dd, Cudd_Regular(f),support);
     ddClearFlag(Cudd_Regular(f));
 
     return(support);
@@ -1118,7 +1118,7 @@ Cudd_VectorSupportIndex(
 
     /* Compute support and clean up markers. */
     for (i = 0; i < n; i++) {
-	ddSupportStep(Cudd_Regular(F[i]),support);
+	ddSupportStep(dd, Cudd_Regular(F[i]),support);
     }
     for (i = 0; i < n; i++) {
 	ddClearFlag(Cudd_Regular(F[i]));
@@ -3858,15 +3858,31 @@ ddCountPathsToNonZero(
 */
 static void
 ddSupportStep(
+  DdManager *dd,	    
   DdNode * f,
   int * support)
 {
+
+    int index, bindex, mindex;
+    unsigned int level, blevel, mlevel;
+
     if (cuddIsConstant(f) || Cudd_IsComplement(f->next))
 	return;
 
-    support[f->index] = 1;
-    ddSupportStep(cuddT(f),support);
-    ddSupportStep(Cudd_Regular(cuddE(f)),support);
+    
+    index = f->index;
+    bindex = f->bindex;
+    level = cuddI(dd, index);
+    blevel = cuddI(dd, bindex);
+
+    /* Chaining support */
+    for (mlevel = level; mlevel <= blevel; mlevel++) {
+	mindex = cuddII(dd, mlevel);
+	support[mindex] = 1;
+    }
+
+    ddSupportStep(dd, cuddT(f),support);
+    ddSupportStep(dd, Cudd_Regular(cuddE(f)),support);
     /* Mark as visited. */
     f->next = Cudd_Complement(f->next);
 

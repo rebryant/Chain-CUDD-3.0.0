@@ -4669,7 +4669,7 @@ Cudd_bddIsVarHardGroup(
 	return(1);
     return(0);
 
-} /* end of Cudd_bddIsVarToBeGrouped */
+} /* end of Cudd_bddIsVarGroupHard */
 
 
 /*---------------------------------------------------------------------------*/
