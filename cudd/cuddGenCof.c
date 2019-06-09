@@ -1078,6 +1078,9 @@ cuddBddRestrictRecur(
     one = DD_ONE(dd);
     zero = Cudd_Not(one);
 
+    fprintf(stderr, "Entering cuddBddRestrictRecur(f = %p, c = %p).  zero = %p, one = %p\n",
+	    f, c, zero, one);
+
     /* Trivial cases */
     if (c == one)		return(f);
     if (c == zero)		return(zero);
