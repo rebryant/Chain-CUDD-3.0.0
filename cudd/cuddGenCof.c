@@ -1468,7 +1468,7 @@ cuddAddConstrainRecur(
 
 */
 DdNode *
-cuddAddRestrictRecur(
+cuddAddRestrictRecurOld(
   DdManager * dd,
   DdNode * f,
   DdNode * c)
@@ -1510,7 +1510,7 @@ cuddAddRestrictRecur(
 	d = cuddAddApplyRecur(dd, Cudd_addOr, s1, s2);
 	if (d == NULL) return(NULL);
 	cuddRef(d);
-	r = cuddAddRestrictRecur(dd, f, d);
+	r = cuddAddRestrictRecurOld(dd, f, d);
 	if (r == NULL) {
 	    Cudd_RecursiveDeref(dd, d);
 	    return(NULL);
@@ -1532,7 +1532,7 @@ cuddAddRestrictRecur(
     }
 
     if (!Cudd_IsConstantInt(Cv)) {
-	t = cuddAddRestrictRecur(dd, Fv, Cv);
+	t = cuddAddRestrictRecurOld(dd, Fv, Cv);
 	if (t == NULL) return(NULL);
     } else if (Cv == one) {
 	t = Fv;
@@ -1540,7 +1540,7 @@ cuddAddRestrictRecur(
 	if (Cnv == one) {
 	    r = Fnv;
 	} else {
-	    r = cuddAddRestrictRecur(dd, Fnv, Cnv);
+	    r = cuddAddRestrictRecurOld(dd, Fnv, Cnv);
 	    if (r == NULL) return(NULL);
 	}
 	return(r);
@@ -1548,7 +1548,7 @@ cuddAddRestrictRecur(
     cuddRef(t);
 
     if (!cuddIsConstant(Cnv)) {
-	e = cuddAddRestrictRecur(dd, Fnv, Cnv);
+	e = cuddAddRestrictRecurOld(dd, Fnv, Cnv);
 	if (e == NULL) {
 	    Cudd_RecursiveDeref(dd, t);
 	    return(NULL);
@@ -1572,6 +1572,135 @@ cuddAddRestrictRecur(
 
     cuddCacheInsert2(dd, Cudd_addRestrict, f, c, r);
     return(r);
+
+} /* end of cuddAddRestrictRecur */
+
+DdNode *
+cuddAddRestrictRecur(
+  DdManager * dd,
+  DdNode * f,
+  DdNode * c)
+{
+    DdNode	 *Fv, *Fnv, *Cv, *Cnv, *t, *e, *r, *one, *zero;
+    DdNode       *nodes[2];
+    int		 topf, topc;
+    unsigned int index, bindex;
+    unsigned int levels[2], level, blevel;
+    DdNode       *deref_set[4];
+    int          full_deref[4];
+    int          i, deref_cnt = 0;
+
+    statLine(dd);
+    one = DD_ONE(dd);
+    zero = DD_ZERO(dd);
+
+    /* Trivial cases */
+    if (c == one)		return(f);
+    if (c == zero)		return(zero);
+    if (cuddIsConstant(f))	return(f);
+    if (f == c)			return(one);
+
+    /* Now f and c are non-constant. */
+
+    /* Check the cache. */
+    r = cuddCacheLookup2(dd, Cudd_addRestrict, f, c);
+    if (r != NULL) {
+	return(r);
+    }
+
+    checkWhetherToGiveUp(dd);
+
+    nodes[0] = f; nodes[1] = c;
+    level = cuddBddTop(dd, 2, nodes, levels);
+    index = cuddII(dd, level);
+
+    topf = levels[0];
+    topc = levels[1];
+
+    if (topc < topf) {	/* abstract top variable from c */
+	DdNode *d, *s1, *s2;
+	/* Find cofactors of c. */
+	s1 = cuddT(c);
+	s2 = cuddE(c);
+	/* Take the OR by applying DeMorgan. */
+	d = cuddAddApplyRecur(dd, Cudd_addOr, s1, s2);
+	if (d == NULL)
+	    goto cleanup;
+	cuddRef(d);
+	full_deref[deref_cnt] = 1;
+	deref_set[deref_cnt++] = d;
+	r = cuddAddRestrictRecur(dd, f, d);	
+	goto cleanup;
+    }
+
+    blevel = cuddBddBottom(dd, 2, nodes, levels, level);
+    bindex = cuddII(dd, blevel);
+
+    /* Recursive step. Here topf <= topc. */
+    if (cuddBddSimpleCofactor(dd,f,blevel,&Fv,&Fnv)) {
+	full_deref[deref_cnt] = 1;
+	deref_set[deref_cnt++] = Fnv;
+    }
+    if (Fnv == NULL)
+	goto cleanup;
+
+    if (cuddBddSimpleCofactor(dd,c,blevel,&Cv,&Cnv)) {
+	full_deref[deref_cnt] = 1;
+	deref_set[deref_cnt++] = Cnv;
+    }
+    if (Cnv == NULL)
+	goto cleanup;
+
+    if (!Cudd_IsConstantInt(Cv)) {
+	t = cuddAddRestrictRecur(dd, Fv, Cv);
+	if (t == NULL)
+	    goto cleanup;
+    } else if (Cv == one) {
+	t = Fv;
+    } else {		/* Cv == zero: return(Fnv @ Cnv) */
+	if (Cnv == one) {
+	    r = Fnv;
+	} else {
+	    r = cuddAddRestrictRecur(dd, Fnv, Cnv);
+	}
+	goto cleanup;
+    }
+    cuddRef(t);
+    full_deref[deref_cnt] = 1;
+    deref_set[deref_cnt++] = t;
+
+    if (!cuddIsConstant(Cnv)) {
+	e = cuddAddRestrictRecur(dd, Fnv, Cnv);
+	if (e == NULL) {
+	    goto cleanup;
+	}
+    } else if (Cnv == one) {
+	e = Fnv;
+    } else {		/* Cnv == zero: return (Fv @ Cv) previously computed */
+	r = t;
+	goto cleanup;
+    }
+    cuddRef(e);
+    r = cuddBddGenerateNode(dd, index, bindex, t, e, &full_deref[deref_cnt]);
+    deref_set[deref_cnt++] = e;
+ 
+ cleanup:   
+    if (r == NULL) {
+	for (i = 0; i < deref_cnt; i++)
+	    Cudd_IterDerefBdd(dd, deref_set[i]);
+    } else {
+	cuddRef(r);
+	for (i = 0; i < deref_cnt; i++) {
+	    if (full_deref[i])
+		Cudd_IterDerefBdd(dd, deref_set[i]);
+	    else
+		cuddDeref(deref_set[i]);
+	}
+	if (f->ref != 1 || c->ref != 1)
+	    cuddCacheInsert2(dd, Cudd_addRestrict, f, c, r);
+	cuddDeref(r);
+    }
+    return r;
 
 } /* end of cuddAddRestrictRecur */
 
