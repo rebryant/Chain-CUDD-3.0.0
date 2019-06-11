@@ -78,6 +78,7 @@
 /*---------------------------------------------------------------------------*/
 
 static int bddCheckPositiveCube (DdManager *manager, DdNode *cube);
+static DdNode *bddRecube(DdManager *manager, DdNode *cube);
 
 /** \endcond */
 
@@ -104,6 +105,7 @@ Cudd_bddExistAbstract(
   DdNode * cube)
 {
     DdNode *res;
+    DdNode *disj; /* Disjunctive representation of cube */
 
     if (bddCheckPositiveCube(manager, cube) == 0) {
         (void) fprintf(manager->err,
@@ -112,14 +114,18 @@ Cudd_bddExistAbstract(
         return(NULL);
     }
 
+    disj = bddRecube(manager, cube);
+    cuddRef(disj);
+
     do {
 	manager->reordered = 0;
-	res = cuddBddExistAbstractRecur(manager, f, cube);
+	res = cuddBddExistAbstractRecur(manager, f, disj);
     } while (manager->reordered == 1);
     if (manager->errorCode == CUDD_TIMEOUT_EXPIRED && manager->timeoutHandler) {
         manager->timeoutHandler(manager, manager->tohArg);
     }
 
+    Cudd_RecursiveDeref(manager, disj);
     return(res);
 
 } /* end of Cudd_bddExistAbstract */
@@ -145,6 +151,7 @@ Cudd_bddExistAbstractLimit(
   unsigned int limit)
 {
     DdNode *res;
+    DdNode *disj;
     unsigned int saveLimit = manager->maxLive;
 
     if (bddCheckPositiveCube(manager, cube) == 0) {
@@ -154,17 +161,21 @@ Cudd_bddExistAbstractLimit(
         return(NULL);
     }
 
+    disj = bddRecube(manager, cube);
+    cuddRef(disj);
+
     manager->maxLive = (manager->keys - manager->dead) + 
         (manager->keysZ - manager->deadZ) + limit;
     do {
 	manager->reordered = 0;
-	res = cuddBddExistAbstractRecur(manager, f, cube);
+	res = cuddBddExistAbstractRecur(manager, f, disj);
     } while (manager->reordered == 1);
     manager->maxLive = saveLimit;
     if (manager->errorCode == CUDD_TIMEOUT_EXPIRED && manager->timeoutHandler) {
         manager->timeoutHandler(manager, manager->tohArg);
     }
 
+    Cudd_RecursiveDeref(manager, disj);
     return(res);
 
 } /* end of Cudd_bddExistAbstractLimit */
@@ -229,6 +240,7 @@ Cudd_bddUnivAbstract(
   DdNode * cube)
 {
     DdNode	*res;
+    DdNode      *disj;
 
     if (bddCheckPositiveCube(manager, cube) == 0) {
 	(void) fprintf(manager->err,
@@ -237,15 +249,19 @@ Cudd_bddUnivAbstract(
 	return(NULL);
     }
 
+    disj = bddRecube(manager, cube);
+    cuddRef(disj);
+
     do {
 	manager->reordered = 0;
-	res = cuddBddExistAbstractRecur(manager, Cudd_Not(f), cube);
+	res = cuddBddExistAbstractRecur(manager, Cudd_Not(f), disj);
     } while (manager->reordered == 1);
     if (res != NULL) res = Cudd_Not(res);
     if (manager->errorCode == CUDD_TIMEOUT_EXPIRED && manager->timeoutHandler) {
         manager->timeoutHandler(manager, manager->tohArg);
     }
 
+    Cudd_RecursiveDeref(manager, disj);
     return(res);
 
 } /* end of Cudd_bddUnivAbstract */
@@ -360,7 +376,7 @@ Cudd_bddVarIsDependent(
 
   @details It is also used by Cudd_bddUnivAbstract.
 
-  @return the %BDD obtained by abstracting the variables of cube from f
+  @return the %BDD obtained by abstracting the variables of disjunct from f
   if successful; NULL otherwise.
 
   @sideeffect None
@@ -372,97 +388,149 @@ DdNode *
 cuddBddExistAbstractRecur(
   DdManager * manager,
   DdNode * f,
-  DdNode * cube)
+  DdNode * disj)
 {
-    DdNode	*F, *T, *E, *res, *res1, *res2, *one;
+    DdNode	 *F, *T, *E, *res, *res1, *res2, *one;
+    DdNode       *Dv, *Dnv;
+    DdNode       *nodes[2];
+    unsigned int index, bindex;
+    unsigned int levels[2], level, blevel, flevel, dlevel;
+    int          comple;
+    DdNode       *deref_set[4];
+    int          full_deref[4];
+    int          i, deref_cnt = 0;
 
     statLine(manager);
     one = DD_ONE(manager);
     F = Cudd_Regular(f);
+    comple = Cudd_IsComplement(f);
 
-    /* Cube is guaranteed to be a cube at this point. */	
-    if (cube == one || F == one) {  
+    /* disj is guaranteed to be a disjunct at this point. */	
+    if (disj == one || F == one) {  
         return(f);
-    }
-    /* From now on, f and cube are non-constant. */
-
-    /* Abstract a variable that does not appear in f. */
-    while (manager->perm[F->index] > manager->perm[cube->index]) {
-	cube = cuddT(cube);
-	if (cube == one) return(f);
     }
 
     /* Check the cache. */
-    if (F->ref != 1 && (res = cuddCacheLookup2(manager, Cudd_bddExistAbstract, f, cube)) != NULL) {
+    if (F->ref != 1 && (res = cuddCacheLookup2(manager, Cudd_bddExistAbstract, f, disj)) != NULL) {
 	return(res);
     }
 
     checkWhetherToGiveUp(manager);
 
+    /* From now on, f and disj are non-constant. */
+
+    nodes[0] = F; nodes[1] = disj;
+    level = cuddBddTop(manager, 2, nodes, levels);
+    index = cuddII(manager, level);
+
+    blevel = cuddBddBottom(manager, 2, nodes, levels, level);
+    bindex = cuddII(manager, blevel);
+
+    flevel = levels[0];
+    dlevel = levels[1];
+
+    /* Recursive step. */
+
     /* Compute the cofactors of f. */
-    T = cuddT(F); E = cuddE(F);
-    if (f != F) {
+    if (cuddBddSimpleCofactor(manager,F,blevel,&T,&E)) {
+	full_deref[deref_cnt] = 1;
+	deref_set[deref_cnt++] = E;
+    }
+    if (E == NULL)
+	goto cleanup;
+
+    if (comple) {
 	T = Cudd_Not(T); E = Cudd_Not(E);
     }
 
-    /* If the two indices are the same, so are their levels. */
-    if (F->index == cube->index) {
+    /* Grab next set of variables to quantify over */
+    if (cuddBddSimpleCofactor(manager,disj,blevel,&Dv,&Dnv)) {
+	full_deref[deref_cnt] = 1;
+	deref_set[deref_cnt++] = Dnv;
+    }
+    if (Dnv == NULL)
+	goto cleanup;
+
+    if (flevel == dlevel) {
+	/* Existentially quantifying over all variables in range */
 	if (T == one || E == one || T == Cudd_Not(E)) {
-	    return(one);
+	    res = one;
+	    goto cleanup;
 	}
-	res1 = cuddBddExistAbstractRecur(manager, T, cuddT(cube));
-	if (res1 == NULL) return(NULL);
-	if (res1 == one) {
-	    if (F->ref != 1)
-		cuddCacheInsert2(manager, Cudd_bddExistAbstract, f, cube, one);
-	    return(one);
+	res1 = cuddBddExistAbstractRecur(manager, T, Dnv);
+	if (res1 == NULL) {
+	    res = NULL;
+	    goto cleanup;
 	}
         cuddRef(res1);
-	res2 = cuddBddExistAbstractRecur(manager, E, cuddT(cube));
+	full_deref[deref_cnt] = 0;
+	deref_set[deref_cnt++] = res1;
+	
+	if (res1 == one) {
+	    res = one;
+	    goto cleanup;
+	}
+
+	res2 = cuddBddExistAbstractRecur(manager, E, Dnv);
 	if (res2 == NULL) {
-	    Cudd_IterDerefBdd(manager,res1);
-	    return(NULL);
+	    res = NULL;
+	    goto cleanup;
 	}
         cuddRef(res2);
+	full_deref[deref_cnt] = 0;
+	deref_set[deref_cnt++] = res2;
+
 	res = cuddBddAndRecur(manager, Cudd_Not(res1), Cudd_Not(res2));
 	if (res == NULL) {
-	    Cudd_IterDerefBdd(manager, res1);
-	    Cudd_IterDerefBdd(manager, res2);
-	    return(NULL);
+	    goto cleanup;
 	}
 	res = Cudd_Not(res);
 	cuddRef(res);
-	Cudd_IterDerefBdd(manager, res1);
-	Cudd_IterDerefBdd(manager, res2);
-	if (F->ref != 1)
-	    cuddCacheInsert2(manager, Cudd_bddExistAbstract, f, cube, res);
-	cuddDeref(res);
-        return(res);
-    } else { /* if (cuddI(manager,F->index) < cuddI(manager,cube->index)) */
-	res1 = cuddBddExistAbstractRecur(manager, T, cube);
-	if (res1 == NULL) return(NULL);
+	goto cleanup;
+    } else if (dlevel < flevel) {
+	/* f is independent of next block of variables */
+	res = cuddBddExistAbstractRecur(manager, f, Dnv);
+	cuddRef(res);
+	goto cleanup;
+    } else {
+	/* No variables to abstract in this range */
+	res1 = cuddBddExistAbstractRecur(manager, T, disj);
+	if (res1 == NULL) {
+	    res = NULL;
+	    goto cleanup;
+	}
         cuddRef(res1);
-	res2 = cuddBddExistAbstractRecur(manager, E, cube);
+	full_deref[deref_cnt] = 0;
+	deref_set[deref_cnt++] = res1;
+
+	res2 = cuddBddExistAbstractRecur(manager, E, disj);
 	if (res2 == NULL) {
-	    Cudd_IterDerefBdd(manager, res1);
-	    return(NULL);
+	    res = NULL;
+	    goto cleanup;
 	}
         cuddRef(res2);
-	/* ITE takes care of possible complementation of res1 and of the
-        ** case in which res1 == res2. */
-	res = cuddBddIteRecur(manager, manager->vars[F->index], res1, res2);
-	if (res == NULL) {
-	    Cudd_IterDerefBdd(manager, res1);
-	    Cudd_IterDerefBdd(manager, res2);
-	    return(NULL);
-	}
-	cuddDeref(res1);
-	cuddDeref(res2);
-	if (F->ref != 1)
-	    cuddCacheInsert2(manager, Cudd_bddExistAbstract, f, cube, res);
-        return(res);
-    }	    
+	res = cuddBddGenerateNode(manager, index, bindex, res1, res2, &full_deref[deref_cnt]);
+	deref_set[deref_cnt++] = res2;
+    }
 
+ cleanup:
+
+    if (res == NULL) {
+	for (i = 0; i < deref_cnt; i++)
+	    Cudd_IterDerefBdd(manager, deref_set[i]);
+    } else {
+	cuddRef(res);
+	for (i = 0; i < deref_cnt; i++) {
+	    if (full_deref[i])
+		Cudd_IterDerefBdd(manager, deref_set[i]);
+	    else
+		cuddDeref(deref_set[i]);
+	}
+	if (f->ref != 1)
+	    cuddCacheInsert2(manager, Cudd_bddExistAbstract, f, disj, res);
+	cuddDeref(res);
+    }
+    return res;
 } /* end of cuddBddExistAbstractRecur */
 
 
@@ -737,3 +805,48 @@ bddCheckPositiveCube(
 
 } /* end of bddCheckPositiveCube */
 
+/**
+  @brief Converts a cube (conjunction of variables) into a disjunct
+  (disjunction of variables).
+  This is the preferred form for the recursive quantification step
+  
+  @return disjunct
+  
+  @sideeffect None
+**/
+static DdNode *
+bddRecube(
+  DdManager * manager,
+  DdNode * cube)
+{
+    /* Construct Nor and then negate */
+    DdNode *res = Cudd_Not(DD_ONE(manager));
+    DdNode *f = cube;
+    unsigned int index, bindex, mindex;
+    unsigned int level, blevel, mlevel;
+    DdNode *var;
+    DdNode *tmp;
+
+    while (!cuddIsConstant(f)) {
+	index = f->index;
+	bindex = f->bindex;
+	level = cuddI(manager, index);
+	blevel = cuddI(manager, bindex);
+
+	for (mlevel = level; mlevel <= blevel; mlevel++) {
+	    mindex = cuddII(manager, mlevel);
+	    var = manager->vars[mindex];
+	    tmp = cuddBddAndRecur(manager, res, Cudd_Not(var));
+	    if (tmp == NULL) {
+		Cudd_RecursiveDeref(manager, res);
+		return NULL;
+	    }
+	    cuddRef(tmp);
+	    Cudd_RecursiveDeref(manager,res);
+	    res = tmp;
+	}
+    }
+
+    cuddDeref(res);
+    return Cudd_Not(res);
+}
