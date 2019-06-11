@@ -794,10 +794,15 @@ cuddBddConstrainRecur(
   DdNode * c)
 {
     DdNode       *Fv, *Fnv, *Cv, *Cnv, *t, *e, *r;
+    DdNode       *C;
     DdNode	 *one, *zero;
-    int		 topf, topc;
-    unsigned int index;
+    DdNode       *nodes[2];
+    unsigned int index, bindex;
+    unsigned int levels[2], level, blevel;
     int          comple = 0;
+    DdNode       *deref_set[4];
+    int          full_deref[4];
+    int          i, deref_cnt = 0;
 
     statLine(dd);
     one = DD_ONE(dd);
@@ -815,6 +820,7 @@ cuddBddConstrainRecur(
 	f = Cudd_Not(f);
 	comple = 1;
     }
+    C = Cudd_Regular(c);
     /* Now f is a regular pointer to a non-constant node; c is also
     ** non-constant, but may be complemented.
     */
@@ -827,30 +833,33 @@ cuddBddConstrainRecur(
 
     checkWhetherToGiveUp(dd);
     
+    nodes[0] = f; nodes[1] = c;
+    level = cuddBddTop(dd, 2, nodes, levels);
+    index = cuddII(dd, level);
+
+    blevel = cuddBddBottom(dd, 2, nodes, levels, level);
+    bindex = cuddII(dd, blevel);
+
+
     /* Recursive step. */
-    topf = dd->perm[f->index];
-    topc = dd->perm[Cudd_Regular(c)->index];
-    if (topf <= topc) {
-	index = f->index;
-	Fv = cuddT(f); Fnv = cuddE(f);
-    } else {
-	index = Cudd_Regular(c)->index;
-	Fv = Fnv = f;
+    if (cuddBddSimpleCofactor(dd,f,blevel,&Fv,&Fnv)) {
+	full_deref[deref_cnt] = 1;
+	deref_set[deref_cnt++] = Fnv;
     }
-    if (topc <= topf) {
-	Cv = cuddT(Cudd_Regular(c)); Cnv = cuddE(Cudd_Regular(c));
-	if (Cudd_IsComplement(c)) {
-	    Cv = Cudd_Not(Cv);
-	    Cnv = Cudd_Not(Cnv);
-	}
-    } else {
-	Cv = Cnv = c;
+    if (Fnv == NULL)
+	goto cleanup;
+
+    if (cuddBddSimpleCofactor(dd,c,blevel,&Cv,&Cnv)) {
+	full_deref[deref_cnt] = 1;
+	deref_set[deref_cnt++] = Cnv;
     }
+    if (Cnv == NULL)
+	goto cleanup;
 
     if (!Cudd_IsConstantInt(Cv)) {
 	t = cuddBddConstrainRecur(dd, Fv, Cv);
 	if (t == NULL)
-	    return(NULL);
+	    goto cleanup;
     } else if (Cv == one) {
 	t = Fv;
     } else {		/* Cv == zero: return Fnv @ Cnv */
@@ -859,49 +868,49 @@ cuddBddConstrainRecur(
 	} else {
 	    r = cuddBddConstrainRecur(dd, Fnv, Cnv);
 	    if (r == NULL)
-		return(NULL);
+		goto cleanup;
 	}
-	return(Cudd_NotCond(r,comple));
+	goto cleanup;
     }
     cuddRef(t);
+    full_deref[deref_cnt] = 0;
+    deref_set[deref_cnt++] = t;
 
     if (!Cudd_IsConstantInt(Cnv)) {
 	e = cuddBddConstrainRecur(dd, Fnv, Cnv);
 	if (e == NULL) {
-	    Cudd_IterDerefBdd(dd, t);
-	    return(NULL);
+	    goto cleanup;
 	}
     } else if (Cnv == one) {
 	e = Fnv;
     } else {		/* Cnv == zero: return Fv @ Cv previously computed */
-	cuddDeref(t);
-	return(Cudd_NotCond(t,comple));
+	r = t;
+	goto cleanup;
     }
     cuddRef(e);
+    r = cuddBddGenerateNode(dd, index, bindex, t, e, &full_deref[deref_cnt]);
+    deref_set[deref_cnt++] = e;
 
-    if (Cudd_IsComplement(t)) {
-	t = Cudd_Not(t);
-	e = Cudd_Not(e);
-	r = (t == e) ? t : cuddUniqueInter(dd, index, t, e);
-	if (r == NULL) {
-	    Cudd_IterDerefBdd(dd, e);
-	    Cudd_IterDerefBdd(dd, t);
-	    return(NULL);
-	}
-	r = Cudd_Not(r);
+ cleanup:
+
+    if (r == NULL) {
+	for (i = 0; i < deref_cnt; i++)
+	    Cudd_IterDerefBdd(dd, deref_set[i]);
     } else {
-	r = (t == e) ? t : cuddUniqueInter(dd, index, t, e);
-	if (r == NULL) {
-	    Cudd_IterDerefBdd(dd, e);
-	    Cudd_IterDerefBdd(dd, t);
-	    return(NULL);
+	cuddRef(r);
+	for (i = 0; i < deref_cnt; i++) {
+	    if (full_deref[i])
+		Cudd_IterDerefBdd(dd, deref_set[i]);
+	    else
+		cuddDeref(deref_set[i]);
 	}
+	if (f->ref != 1 || C->ref != 1)
+	    cuddCacheInsert2(dd, Cudd_bddConstrain, f, c, r);
+	cuddDeref(r);
     }
-    cuddDeref(t);
-    cuddDeref(e);
-
-    cuddCacheInsert2(dd, Cudd_bddConstrain, f, c, r);
-    return(Cudd_NotCond(r,comple));
+    if (r)
+	r = Cudd_NotCond(r,comple);
+    return r;
 
 } /* end of cuddBddConstrainRecur */
 
@@ -1078,8 +1087,8 @@ cuddBddRestrictRecur(
     one = DD_ONE(dd);
     zero = Cudd_Not(one);
 
-    fprintf(stderr, "Entering cuddBddRestrictRecur(f = %p, c = %p).  zero = %p, one = %p\n",
-	    f, c, zero, one);
+    //    fprintf(stderr, "Entering cuddBddRestrictRecur(f = %p, c = %p).  zero = %p, one = %p\n",
+    //	    f, c, zero, one);
 
     /* Trivial cases */
     if (c == one)		return(f);
@@ -1110,21 +1119,30 @@ cuddBddRestrictRecur(
     nodes[0] = f; nodes[1] = c;
     level = cuddBddTop(dd, 2, nodes, levels);
     index = cuddII(dd, level);
-    
 
     topf = levels[0]; // dd->perm[f->index];
     topc = levels[1]; // dd->perm[Cudd_Regular(c)->index];
+
+    blevel = cuddBddBottom(dd, 2, nodes, levels, level);
+    bindex = cuddII(dd, blevel);
+
+    if (cuddBddSimpleCofactor(dd,c,blevel,&Cv,&Cnv)) {
+	full_deref[deref_cnt] = 1;
+	deref_set[deref_cnt++] = Cnv;
+    }
+    if (Cnv == NULL)
+	goto cleanup;
 
     if (topc < topf) {	/* abstract top variable from c */
 	DdNode *d, *s1, *s2;
 
 	/* Find complements of cofactors of c. */
 	if (Cudd_IsComplement(c)) {
-	    s1 = cuddT(Cudd_Regular(c));
-	    s2 = cuddE(Cudd_Regular(c));
+	    s1 = Cv;
+	    s2 = Cnv;
 	} else {
-	    s1 = Cudd_Not(cuddT(c));
-	    s2 = Cudd_Not(cuddE(c));
+	    s1 = Cudd_Not(Cv);
+	    s2 = Cudd_Not(Cnv);
 	}
 	/* Take the OR by applying DeMorgan. */
 	d = cuddBddAndRecur(dd, s1, s2);
@@ -1139,22 +1157,12 @@ cuddBddRestrictRecur(
 	goto cleanup;
     }
 
-    blevel = cuddBddBottom(dd, 2, nodes, levels, level);
-    bindex = cuddII(dd, blevel);
-
     /* Recursive step. Here topf <= topc. */
     if (cuddBddSimpleCofactor(dd,f,blevel,&Fv,&Fnv)) {
 	full_deref[deref_cnt] = 1;
 	deref_set[deref_cnt++] = Fnv;
     }
     if (Fnv == NULL)
-	goto cleanup;
-
-    if (cuddBddSimpleCofactor(dd,c,blevel,&Cv,&Cnv)) {
-	full_deref[deref_cnt] = 1;
-	deref_set[deref_cnt++] = Cnv;
-    }
-    if (Cnv == NULL)
 	goto cleanup;
 
     if (!Cudd_IsConstantInt(Cv)) {
@@ -1374,8 +1382,12 @@ cuddAddConstrainRecur(
 {
     DdNode       *Fv, *Fnv, *Cv, *Cnv, *t, *e, *r;
     DdNode	 *one, *zero;
-    int		 topf, topc;
-    unsigned int index;
+    DdNode       *nodes[2];
+    unsigned int index, bindex;
+    unsigned int levels[2], level, blevel;
+    DdNode       *deref_set[4];
+    int          full_deref[4];
+    int          i, deref_cnt = 0;
 
     statLine(dd);
     one = DD_ONE(dd);
@@ -1397,26 +1409,32 @@ cuddAddConstrainRecur(
 
     checkWhetherToGiveUp(dd);
 
-    /* Recursive step. */
-    topf = dd->perm[f->index];
-    topc = dd->perm[c->index];
-    if (topf <= topc) {
-	index = f->index;
-	Fv = cuddT(f); Fnv = cuddE(f);
-    } else {
-	index = c->index;
-	Fv = Fnv = f;
-    }
-    if (topc <= topf) {
-	Cv = cuddT(c); Cnv = cuddE(c);
-    } else {
-	Cv = Cnv = c;
-    }
+    nodes[0] = f; nodes[1] = c;
+    level = cuddBddTop(dd, 2, nodes, levels);
+    index = cuddII(dd, level);
 
-    if (!cuddIsConstant(Cv)) {
+    blevel = cuddBddBottom(dd, 2, nodes, levels, level);
+    bindex = cuddII(dd, blevel);
+
+    /* Recursive step. */
+    if (cuddBddSimpleCofactor(dd,f,blevel,&Fv,&Fnv)) {
+	full_deref[deref_cnt] = 1;
+	deref_set[deref_cnt++] = Fnv;
+    }
+    if (Fnv == NULL)
+	goto cleanup;
+
+    if (cuddBddSimpleCofactor(dd,c,blevel,&Cv,&Cnv)) {
+	full_deref[deref_cnt] = 1;
+	deref_set[deref_cnt++] = Cnv;
+    }
+    if (Cnv == NULL)
+	goto cleanup;
+
+    if (!Cudd_IsConstantInt(Cv)) {
 	t = cuddAddConstrainRecur(dd, Fv, Cv);
 	if (t == NULL)
-	    return(NULL);
+	    goto cleanup;
     } else if (Cv == one) {
 	t = Fv;
     } else {		/* Cv == zero: return Fnv @ Cnv */
@@ -1425,37 +1443,48 @@ cuddAddConstrainRecur(
 	} else {
 	    r = cuddAddConstrainRecur(dd, Fnv, Cnv);
 	    if (r == NULL)
-		return(NULL);
+		goto cleanup;
 	}
-	return(r);
+	goto cleanup;
     }
     cuddRef(t);
+    full_deref[deref_cnt] = 0;
+    deref_set[deref_cnt++] = t;
 
-    if (!cuddIsConstant(Cnv)) {
+    if (!Cudd_IsConstantInt(Cnv)) {
 	e = cuddAddConstrainRecur(dd, Fnv, Cnv);
 	if (e == NULL) {
-	    Cudd_RecursiveDeref(dd, t);
-	    return(NULL);
+	    goto cleanup;
 	}
     } else if (Cnv == one) {
 	e = Fnv;
     } else {		/* Cnv == zero: return Fv @ Cv previously computed */
-	cuddDeref(t);
-	return(t);
+	r = t;
+	goto cleanup;
     }
     cuddRef(e);
+    r = cuddBddGenerateNode(dd, index, bindex, t, e, &full_deref[deref_cnt]);
+    deref_set[deref_cnt++] = e;
 
-    r = (t == e) ? t : cuddUniqueInter(dd, index, t, e);
+ cleanup:
+
     if (r == NULL) {
-	Cudd_RecursiveDeref(dd, e);
-	Cudd_RecursiveDeref(dd, t);
-	return(NULL);
+	for (i = 0; i < deref_cnt; i++)
+	    Cudd_IterDerefBdd(dd, deref_set[i]);
+    } else {
+	cuddRef(r);
+	for (i = 0; i < deref_cnt; i++) {
+	    if (full_deref[i])
+		Cudd_IterDerefBdd(dd, deref_set[i]);
+	    else
+		cuddDeref(deref_set[i]);
+	}
+	if (f->ref != 1 || c->ref != 1)
+	    cuddCacheInsert2(dd, Cudd_bddConstrain, f, c, r);
+	cuddDeref(r);
     }
-    cuddDeref(t);
-    cuddDeref(e);
 
-    cuddCacheInsert2(dd, Cudd_addConstrain, f, c, r);
-    return(r);
+    return r;
 
 } /* end of cuddAddConstrainRecur */
 
@@ -1617,14 +1646,25 @@ cuddAddRestrictRecur(
     level = cuddBddTop(dd, 2, nodes, levels);
     index = cuddII(dd, level);
 
+    blevel = cuddBddBottom(dd, 2, nodes, levels, level);
+    bindex = cuddII(dd, blevel);
+
+    if (cuddBddSimpleCofactor(dd,c,blevel,&Cv,&Cnv)) {
+	full_deref[deref_cnt] = 1;
+	deref_set[deref_cnt++] = Cnv;
+    }
+    if (Cnv == NULL)
+	goto cleanup;
+
     topf = levels[0];
     topc = levels[1];
+
 
     if (topc < topf) {	/* abstract top variable from c */
 	DdNode *d, *s1, *s2;
 	/* Find cofactors of c. */
-	s1 = cuddT(c);
-	s2 = cuddE(c);
+	s1 = Cv;
+	s2 = Cnv;
 	/* Take the OR by applying DeMorgan. */
 	d = cuddAddApplyRecur(dd, Cudd_addOr, s1, s2);
 	if (d == NULL)
@@ -1636,8 +1676,6 @@ cuddAddRestrictRecur(
 	goto cleanup;
     }
 
-    blevel = cuddBddBottom(dd, 2, nodes, levels, level);
-    bindex = cuddII(dd, blevel);
 
     /* Recursive step. Here topf <= topc. */
     if (cuddBddSimpleCofactor(dd,f,blevel,&Fv,&Fnv)) {
@@ -1645,13 +1683,6 @@ cuddAddRestrictRecur(
 	deref_set[deref_cnt++] = Fnv;
     }
     if (Fnv == NULL)
-	goto cleanup;
-
-    if (cuddBddSimpleCofactor(dd,c,blevel,&Cv,&Cnv)) {
-	full_deref[deref_cnt] = 1;
-	deref_set[deref_cnt++] = Cnv;
-    }
-    if (Cnv == NULL)
 	goto cleanup;
 
     if (!Cudd_IsConstantInt(Cv)) {
