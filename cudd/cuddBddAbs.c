@@ -390,7 +390,7 @@ cuddBddExistAbstractRecur(
   DdNode * f,
   DdNode * disj)
 {
-    DdNode	 *F, *T, *E, *res, *res1, *res2, *one;
+    DdNode	 *F, *T, *E, *res, *res1, *res2, *one, *zero;
     DdNode       *Dv, *Dnv;
     DdNode       *nodes[2];
     unsigned int index, bindex;
@@ -402,11 +402,15 @@ cuddBddExistAbstractRecur(
 
     statLine(manager);
     one = DD_ONE(manager);
+    zero = Cudd_Not(one);
     F = Cudd_Regular(f);
     comple = Cudd_IsComplement(f);
 
+    //    fprintf(stderr, "recur.  f = %p, findex = %d.  disj = %p, dindex = %d\n",
+    //	    f, F->index, disj, disj->index);
+
     /* disj is guaranteed to be a disjunct at this point. */	
-    if (disj == one || F == one) {  
+    if (disj == zero || F == one) {  
         return(f);
     }
 
@@ -417,7 +421,7 @@ cuddBddExistAbstractRecur(
 
     checkWhetherToGiveUp(manager);
 
-    /* From now on, f and disj are non-constant. */
+    /* From now on, f and disj are non-constant, and res == NULL */
 
     nodes[0] = F; nodes[1] = disj;
     level = cuddBddTop(manager, 2, nodes, levels);
@@ -443,7 +447,7 @@ cuddBddExistAbstractRecur(
 	T = Cudd_Not(T); E = Cudd_Not(E);
     }
 
-    /* Grab next set of variables to quantify over */
+    /* Grab next block of variables to quantify over */
     if (cuddBddSimpleCofactor(manager,disj,blevel,&Dv,&Dnv)) {
 	full_deref[deref_cnt] = 1;
 	deref_set[deref_cnt++] = Dnv;
@@ -458,10 +462,8 @@ cuddBddExistAbstractRecur(
 	    goto cleanup;
 	}
 	res1 = cuddBddExistAbstractRecur(manager, T, Dnv);
-	if (res1 == NULL) {
-	    res = NULL;
+	if (res1 == NULL)
 	    goto cleanup;
-	}
         cuddRef(res1);
 	full_deref[deref_cnt] = 0;
 	deref_set[deref_cnt++] = res1;
@@ -472,10 +474,8 @@ cuddBddExistAbstractRecur(
 	}
 
 	res2 = cuddBddExistAbstractRecur(manager, E, Dnv);
-	if (res2 == NULL) {
-	    res = NULL;
+	if (res2 == NULL)
 	    goto cleanup;
-	}
         cuddRef(res2);
 	full_deref[deref_cnt] = 0;
 	deref_set[deref_cnt++] = res2;
@@ -495,19 +495,16 @@ cuddBddExistAbstractRecur(
     } else {
 	/* No variables to abstract in this range */
 	res1 = cuddBddExistAbstractRecur(manager, T, disj);
-	if (res1 == NULL) {
-	    res = NULL;
+	if (res1 == NULL)
 	    goto cleanup;
-	}
         cuddRef(res1);
 	full_deref[deref_cnt] = 0;
 	deref_set[deref_cnt++] = res1;
 
 	res2 = cuddBddExistAbstractRecur(manager, E, disj);
-	if (res2 == NULL) {
-	    res = NULL;
+	if (res2 == NULL)
 	    goto cleanup;
-	}
+
         cuddRef(res2);
 	res = cuddBddGenerateNode(manager, index, bindex, res1, res2, &full_deref[deref_cnt]);
 	deref_set[deref_cnt++] = res2;
@@ -820,7 +817,7 @@ bddRecube(
   DdNode * cube)
 {
     /* Construct Nor and then negate */
-    DdNode *res = Cudd_Not(DD_ONE(manager));
+    DdNode *res = DD_ONE(manager);
     DdNode *f = cube;
     unsigned int index, bindex, mindex;
     unsigned int level, blevel, mlevel;
@@ -845,6 +842,7 @@ bddRecube(
 	    Cudd_RecursiveDeref(manager,res);
 	    res = tmp;
 	}
+	f = cuddT(f);
     }
 
     cuddDeref(res);
