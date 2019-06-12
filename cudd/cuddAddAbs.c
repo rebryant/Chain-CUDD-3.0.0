@@ -225,13 +225,13 @@ cuddAddExistAbstractRecur(
   DdNode * f,
   DdNode * cube)
 {
-    DdNode	*T, *E, *res, *res1, *res2, *zero;
+    DdNode	*T, *E, *res, *res1, *res2, *one;
 
     statLine(manager);
-    zero = DD_ZERO(manager);
+    one = DD_ONE(manager);
 
     /* Cube is guaranteed to be a cube at this point. */	
-    if (f == zero || cuddIsConstant(cube)) {  
+    if (f == one || cuddIsConstant(cube)) {  
         return(f);
     }
 
