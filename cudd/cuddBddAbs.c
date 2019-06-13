@@ -406,9 +406,6 @@ cuddBddExistAbstractRecur(
     F = Cudd_Regular(f);
     comple = Cudd_IsComplement(f);
 
-    //    fprintf(stderr, "recur.  f = %p, findex = %d.  disj = %p, dindex = %d\n",
-    //	    f, F->index, disj, disj->index);
-
     /* disj is guaranteed to be a disjunct at this point. */	
     if (disj == zero || F == one) {  
         return(f);
@@ -465,7 +462,7 @@ cuddBddExistAbstractRecur(
 	if (res1 == NULL)
 	    goto cleanup;
         cuddRef(res1);
-	full_deref[deref_cnt] = 0;
+	full_deref[deref_cnt] = 1;
 	deref_set[deref_cnt++] = res1;
 	
 	if (res1 == one) {
@@ -477,7 +474,7 @@ cuddBddExistAbstractRecur(
 	if (res2 == NULL)
 	    goto cleanup;
         cuddRef(res2);
-	full_deref[deref_cnt] = 0;
+	full_deref[deref_cnt] = 1;
 	deref_set[deref_cnt++] = res2;
 
 	res = cuddBddAndRecur(manager, Cudd_Not(res1), Cudd_Not(res2));
@@ -485,18 +482,17 @@ cuddBddExistAbstractRecur(
 	    goto cleanup;
 	}
 	res = Cudd_Not(res);
-	cuddRef(res);
 	goto cleanup;
     } else if (dlevel < flevel) {
 	/* f is independent of next block of variables */
 	res = cuddBddExistAbstractRecur(manager, f, Dnv);
-	cuddRef(res);
 	goto cleanup;
     } else {
 	/* No variables to abstract in this range */
 	res1 = cuddBddExistAbstractRecur(manager, T, disj);
 	if (res1 == NULL)
 	    goto cleanup;
+
         cuddRef(res1);
 	full_deref[deref_cnt] = 0;
 	deref_set[deref_cnt++] = res1;
