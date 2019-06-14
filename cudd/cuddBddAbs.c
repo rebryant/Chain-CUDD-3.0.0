@@ -406,8 +406,6 @@ cuddBddExistAbstractRecur(
     F = Cudd_Regular(f);
     comple = Cudd_IsComplement(f);
 
-    //    fprintf(stderr, "recur.  f = %p, findex = %d.  disj = %p, dindex = %d\n",
-    //	    f, F->index, disj, disj->index);
 
     /* disj is guaranteed to be a disjunct at this point. */	
     if (disj == zero || F == one) {  
