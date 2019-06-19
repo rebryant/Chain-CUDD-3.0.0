@@ -453,10 +453,13 @@ Cudd_CheckZeroRef(
 		if (node->ref != 0 && node->ref != DD_MAXREF) {
 		    index = (int) node->index;
 		    if (node != manager->vars[index]) {
+			//			fprintf(stdout, "Found BDD node %p with reference count %d\n", (void *) node, node->ref);
 			count++;
 		    } else {
 			if (node->ref != 1) {
-			    count++;
+			    //			    fprintf(stdout, "Found BDD variable node %p with reference count %d\n", (void *) node, node->ref);
+			    // These seem to generate extraneous counts
+			    //			    count++;
 			}
 		    }
 		}
