@@ -199,7 +199,9 @@ Cudd_bddRestrict(
     Cudd_IterDerefBdd(dd,commonSupport);
 
     /* Abstract from c the variables that do not appear in f. */
-    cplus = Cudd_bddExistAbstract(dd, c, suppC);
+    // DEBUG
+    cplus = c;
+    //cplus = Cudd_bddExistAbstract(dd, c, suppC);
     if (cplus == NULL) {
 	Cudd_IterDerefBdd(dd,suppC);
 	return(NULL);

@@ -406,7 +406,6 @@ cuddBddExistAbstractRecur(
     F = Cudd_Regular(f);
     comple = Cudd_IsComplement(f);
 
-
     /* disj is guaranteed to be a disjunct at this point. */	
     if (disj == zero || F == one) {  
         return(f);
@@ -493,6 +492,7 @@ cuddBddExistAbstractRecur(
 	res1 = cuddBddExistAbstractRecur(manager, T, disj);
 	if (res1 == NULL)
 	    goto cleanup;
+
         cuddRef(res1);
 	full_deref[deref_cnt] = 0;
 	deref_set[deref_cnt++] = res1;
