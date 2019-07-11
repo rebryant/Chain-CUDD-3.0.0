@@ -3529,7 +3529,10 @@ ddReportRefMess(
     (void) fprintf(unique->err, "  This problem is often due to a missing \
 call to Cudd_Ref\n  or to an extra call to Cudd_RecursiveDeref.\n  \
 See the CUDD Programmer's Guide for additional details.");
+#if 0    
     abort();
+#endif
+    exit(1);
 
 } /* end of ddReportRefMess */
 
@@ -3560,6 +3563,9 @@ ddReportRefMessDetailed(
     (void) fprintf(unique->err, "  This problem is often due to a missing \
 call to Cudd_Ref\n  or to an extra call to Cudd_RecursiveDeref.\n  \
 See the CUDD Programmer's Guide for additional details.");
+#if 0
     abort();
+#endif
+    exit(2);
 
 } /* end of ddReportRefMess */
