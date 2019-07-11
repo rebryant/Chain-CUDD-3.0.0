@@ -46,6 +46,15 @@
 #include "util.h"
 #include "cuddInt.h"
 
+#if 0
+/* Debug: used to find problem with bad pointers */
+static void sanity_check(DdNode *f, char *where) {
+    if (f != NULL && (size_t) f < 0x1000) {
+	fprintf(stdout, "Fishy function %p at %s\n", f, where);
+    }
+}
+#endif
+
 
 /*---------------------------------------------------------------------------*/
 /* Constant declarations                                                     */
@@ -1433,6 +1442,7 @@ cuddBddSimpleCofactor(
     int new_ref = 0;
 
     F = Cudd_Regular(f);
+
     comple = Cudd_IsComplement(f);
     findex = F->index;
     flevel = cuddI(dd,findex);
@@ -1453,16 +1463,17 @@ cuddBddSimpleCofactor(
 	fnve = cuddE(F);
 	nindex = cuddII(dd, blevel + 1);
 	Fnv = cuddUniqueInterChained(dd,(int)nindex,(int)fbindex,fnvt,fnve);
-	if (Fnv == NULL) 
+	if (Fnv == NULL) {
+	    *fvp = Cudd_NotCond(Fv,comple);
+	    *fnvp = NULL;
 	    return 0;
-
+	}
 	/* Create reference for it */
 	cuddRef(Fnv);
 	new_ref = 1;
     }
     *fvp = Cudd_NotCond(Fv,comple);
     *fnvp = Cudd_NotCond(Fnv,comple);
-
     return new_ref;
 }
 

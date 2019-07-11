@@ -4134,15 +4134,18 @@ ddFindSupport(
     for (mlevel = level; mlevel <= blevel; mlevel++) {
 	mindex = cuddII(dd, mlevel);
 	var = dd->vars[mindex];
-	/* REB: Oops.  This hack is not valid with chaining.  What if
-	   node var is being marked due to the presence of this index
-	   in a chained node.  Then might fail to traverse below node
-	   var if it's encountered later. */
-
 	/* It is possible that var is embedded in f.  That causes no problem,
 	** though, because if we see it after encountering another node with
 	** the same index, nothing is supposed to happen.
 	*/
+
+	/*
+	  REB 2019-06-14: This hack works with chaining as well.  It's possible
+	  to mark node var while processing a node that spans multiple
+	  levels.  Since var has no children, there's no need to
+	  traverse it.
+	*/
+
 	if (!Cudd_IsComplement(var->next)) {
 	    var->next = Cudd_Complement(var->next);
 	    dd->stack[*SP] = (DdNode *)(ptruint) mindex;
