@@ -1097,8 +1097,7 @@ cuddBddGenerateNode(
     if (r == NULL) {
 	r = cuddUniqueInterChained(dd,(int)index,(int)bindex,t,e);
 	if (r == NULL) {
-	    Cudd_IterDerefBdd(dd, t);
-	    Cudd_IterDerefBdd(dd, e);
+  	    // No dereferencing required here.  It will be done by the caller
 	    if (compressedp)
 		*compressedp = 0;
 	    return(NULL);
