@@ -1242,13 +1242,13 @@ cuddBddNPAndRecur(
     /* Terminal cases. */
     F = Cudd_Regular(f);
     G = Cudd_Regular(g);
-    if (F == G) {
-	if (f == g) return(one);
-	else return(Cudd_Not(one));
-    }
     if (G == one) {
 	if (g == one) return(f);
 	else return(g);
+    }
+    if (F == G) {
+	if (f == g) return(one);
+	else return(Cudd_Not(one));
     }
     if (F == one) {
 	return(f);
@@ -1355,13 +1355,13 @@ cuddBddNPAndRecurOld(
     /* Terminal cases. */
     F = Cudd_Regular(f);
     G = Cudd_Regular(g);
-    if (F == G) {
-	if (f == g) return(one);
-	else return(Cudd_Not(one));
-    }
     if (G == one) {
 	if (g == one) return(f);
 	else return(g);
+    }
+    if (F == G) {
+	if (f == g) return(one);
+	else return(Cudd_Not(one));
     }
     if (F == one) {
 	return(f);
