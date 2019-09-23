@@ -1211,7 +1211,7 @@ cuddBddRestrictRecur(
 
 
 /**
-  @brief Implements the recursive step of Cudd_bddNPAnd.
+  @brief Implements the recursive step of Cudd_bddNPAnd, based on quantification.
 
   @return a pointer to the result is successful; NULL otherwise.
 
@@ -1338,136 +1338,108 @@ cuddBddNPAndRecur(
     return(r);
 } /* end of cuddBddNPAndRecur */
 
+#if 0 /* New section */
+/**
+  @brief New way toImplement the recursive step of Cudd_bddNPAnd.
+
+  @return a pointer to the result is successful; NULL otherwise.
+
+  @sideeffect None
+
+  @see Cudd_bddNPAnd
+
+*/
 DdNode *
-cuddBddNPAndRecurOld(
+cuddBddNPAndRecurNew(
   DdManager * manager,
   DdNode * f,
   DdNode * g)
 {
-    DdNode *F, *ft, *fe, *G, *gt, *ge;
-    DdNode *one, *r, *t, *e;
-    int topf, topg;
-    unsigned int index;
+    /* Cache used by traversal */
+    unsigned int maxCacheSize = dd->maxCacheHard;
+    DdLocalCache *tcache = cuddLocalCacheInit(manager, 2, 1<<15, maxCacheSize);
+    if (tcache == NULL)
+	return NULL;
+    cuddBddNPAndTraverse(manager, f, g);
 
-    statLine(manager);
+    DdNode *r = cuddBddNPAndTrim(manager, f);
+
+    cuddLocalCacheQuit(tcache);
+
+    return (r);
+} /* end of cuddBddNPAndRecurOriginal */
+
+/**
+   @brief Implements traversal phase of cuddBddNPAnd.
+
+   @return 1 if success, 0 if failure
+
+   @sideeffect Marks those nodes in f that must retained in result
+
+   @See cuddBDDNPAndRecur
+**/
+/* Oops.  Chaining adds complications to this code.  Must redesign */
+static int
+cuddBddNPAndTraverse(
+DdManager * manager,
+DdNode * f,
+DdNode * g,
+DdLocalCache tcache)
+{
+    DdNote *fv, *fnv, *gv, *gnv, *nodes[2];
+    DdNode *one, *zero, *r, *t, *e;
+    unsigned int levels[2], level, blevel;
+    unsigned int index, bindex;
+    DdNode *deref_set[4];
+    DdNode key[2];
+    int full_deref[4];
+    int i, deref_cnt = 0;
+    int ok = 1;
+    
+
+    if (Cudd_IsConstant(f))
+	/* Have hit terminal condition */
+	return;
+
+    /* Check if have hit this combination already */
+    key[0] = f; key[1] = g;
+    if (cuddLocalCacheLookup(tcache, key) != NULL)
+	return;
+
+    checkWhetherToGiveup(manager);
+
     one = DD_ONE(manager);
+    zero = Cudd_Not(one);
 
-    /* Terminal cases. */
-    F = Cudd_Regular(f);
-    G = Cudd_Regular(g);
-    if (G == one) {
-	if (g == one) return(f);
-	else return(g);
-    }
-    if (F == G) {
-	if (f == g) return(one);
-	else return(Cudd_Not(one));
-    }
-    if (F == one) {
-	return(f);
+    if (g != zero) {
+	/* Mark that this node needs to be retained */
+	DdNode *F = Cudd_Regular(f);
+	F->next = Cudd_Not(F->next);
     }
 
-    /* At this point f and g are not constant. */
-    /* Check cache. */
-    if (F->ref != 1 || G->ref != 1) {
-	r = cuddCacheLookup2(manager, Cudd_bddNPAnd, f, g);
-	if (r != NULL) return(r);
-    }
-
-    checkWhetherToGiveUp(manager);
-
-    /* Here we can skip the use of cuddI, because the operands are known
-    ** to be non-constant.
-    */
-    topf = manager->perm[F->index];
-    topg = manager->perm[G->index];
-
-    if (topg < topf) {	/* abstract top variable from g */
-	DdNode *d;
-
-	/* Find complements of cofactors of g. */
-	if (Cudd_IsComplement(g)) {
-	    gt = cuddT(G);
-	    ge = cuddE(G);
-	} else {
-	    gt = Cudd_Not(cuddT(g));
-	    ge = Cudd_Not(cuddE(g));
-	}
-	/* Take the OR by applying DeMorgan. */
-	d = cuddBddAndRecur(manager, gt, ge);
-	if (d == NULL) return(NULL);
-	d = Cudd_Not(d);
-	cuddRef(d);
-	r = cuddBddNPAndRecurOld(manager, f, d);
-	if (r == NULL) {
-	    Cudd_IterDerefBdd(manager, d);
-	    return(NULL);
-	}
-	cuddRef(r);
-	Cudd_IterDerefBdd(manager, d);
-	cuddCacheInsert2(manager, Cudd_bddNPAnd, f, g, r);
-	cuddDeref(r);
-	return(r);
-    }
+    nodes[0] = f; nodes[1] = g;
+    level = cuddBddTop(manager,2,nodes,levels);
+    index = cuddII(manager,level);
+    blevel = cuddBddBottom(manager,2,nodes,levels,level);
+    bindex = cuddII(manager,blevel);
 
     /* Compute cofactors. */
-    index = F->index;
-    ft = cuddT(F);
-    fe = cuddE(F);
-    if (Cudd_IsComplement(f)) {
-      ft = Cudd_Not(ft);
-      fe = Cudd_Not(fe);
+    if (cuddBddSimpleCofactor(manager,f,blevel,&fv,&fnv)) {
+	full_deref[deref_cnt] = 1;
+	deref_set[deref_cnt++] = fnv;
     }
+    if (fnv == NULL)
+	goto cleanup;
 
-    if (topg == topf) {
-	gt = cuddT(G);
-	ge = cuddE(G);
-	if (Cudd_IsComplement(g)) {
-	    gt = Cudd_Not(gt);
-	    ge = Cudd_Not(ge);
-	}
-    } else {
-	gt = ge = g;
+    if (cuddBddSimpleCofactor(manager,g,blevel,&gv,&gnv)) {
+	full_deref[deref_cnt] = 1;
+	deref_set[deref_cnt++] = gnv;
     }
-
-    t = cuddBddNPAndRecurOld(manager, ft, gt);
-    if (t == NULL) return(NULL);
-    cuddRef(t);
-
-    e = cuddBddNPAndRecurOld(manager, fe, ge);
-    if (e == NULL) {
-	Cudd_IterDerefBdd(manager, t);
-	return(NULL);
-    }
-    cuddRef(e);
-
-    if (t == e) {
-	r = t;
-    } else {
-	if (Cudd_IsComplement(t)) {
-	    r = cuddUniqueInter(manager,(int)index,Cudd_Not(t),Cudd_Not(e));
-	    if (r == NULL) {
-		Cudd_IterDerefBdd(manager, t);
-		Cudd_IterDerefBdd(manager, e);
-		return(NULL);
-	    }
-	    r = Cudd_Not(r);
-	} else {
-	    r = cuddUniqueInter(manager,(int)index,t,e);
-	    if (r == NULL) {
-		Cudd_IterDerefBdd(manager, t);
-		Cudd_IterDerefBdd(manager, e);
-		return(NULL);
-	    }
-	}
-    }
-    cuddDeref(e);
-    cuddDeref(t);
-    if (F->ref != 1 || G->ref != 1)
-	cuddCacheInsert2(manager, Cudd_bddNPAnd, f, g, r);
-    return(r);
-
-} /* end of cuddBddNPAndRecurOld */
+    if (gnv == NULL)
+	goto cleanup;
+    
+} /* end of cuddBddNPAndTraverse */
+#endif /* New section */
 
 
 /**
