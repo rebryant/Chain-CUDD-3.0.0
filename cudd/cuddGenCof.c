@@ -274,6 +274,50 @@ Cudd_bddNPAnd(
 
 } /* end of Cudd_bddNPAnd */
 
+/**
+   @brief Computes f non-polluting-and g unless too many intermediate nodes are required
+
+  @details The non-polluting AND of f and g is a hybrid of AND and
+  Restrict.  From Restrict, this operation takes the idea of
+  existentially quantifying the top variable of the second operand if
+  it does not appear in the first.  Therefore, the variables that
+  appear in the result also appear in f.  For the rest, the function
+  behaves like AND.  Since the two operands play different roles,
+  non-polluting AND is not commutative.
+
+  The existential quantification generates intermediate results.
+  Assigning a limit will bound their growth.
+
+  @return a pointer to the result if successful; NULL otherwise.
+
+  @sideeffect None
+
+  @see Cudd_bddConstrain Cudd_bddRestrict
+
+*/
+DdNode *
+Cudd_bddNPAndLimit(
+  DdManager * dd,
+  DdNode * f,
+  DdNode * g,
+  unsigned int limit)
+{
+    DdNode *res;
+    unsigned int saveLimit = dd->maxLive;
+
+    dd->maxLive = (dd->keys - dd->dead) + (dd->keysZ - dd->deadZ) + limit;
+    do {
+	dd->reordered = 0;
+	res = cuddBddNPAndRecur(dd,f,g);
+    } while (dd->reordered == 1);
+    dd->maxLive = saveLimit;
+    if (dd->errorCode == CUDD_TIMEOUT_EXPIRED && dd->timeoutHandler) {
+        dd->timeoutHandler(dd, dd->tohArg);
+    }
+    return(res);
+
+} /* end of Cudd_bddNPAnd */
+
 
 /**
   @brief Computes f constrain c for ADDs.

@@ -812,6 +812,7 @@ extern char * Cudd_FactoredFormString(DdManager *dd, DdNode *f, char const * con
 extern DdNode * Cudd_bddConstrain(DdManager *dd, DdNode *f, DdNode *c);
 extern DdNode * Cudd_bddRestrict(DdManager *dd, DdNode *f, DdNode *c);
 extern DdNode * Cudd_bddNPAnd(DdManager *dd, DdNode *f, DdNode *c);
+extern DdNode * Cudd_bddNPAndLimit(DdManager *dd, DdNode *f, DdNode *c, unsigned int limit);
 extern DdNode * Cudd_addConstrain(DdManager *dd, DdNode *f, DdNode *c);
 extern DdNode ** Cudd_bddConstrainDecomp(DdManager *dd, DdNode *f);
 extern DdNode * Cudd_addRestrict(DdManager *dd, DdNode *f, DdNode *c);
