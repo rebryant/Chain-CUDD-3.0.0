@@ -1291,7 +1291,7 @@ cuddBddNPAndRecur(
 	else return(g);
     }
     if (F == G) {
-	if (f == g) return(one);
+	if (f == g) return(f);
 	else return(Cudd_Not(one));
     }
     if (F == one) {
