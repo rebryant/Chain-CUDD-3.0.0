@@ -1271,7 +1271,7 @@ cuddBddNPAndRecur(
   DdNode * g)
 {
     DdNode *F, *ft, *fe, *G, *gt, *ge;
-    DdNode *one, *r, *t, *e;
+    DdNode *one, *zero, *r, *t, *e;
     DdNode *nodes[2];
     int topf, topg;
     unsigned int index, bindex;
@@ -1282,17 +1282,18 @@ cuddBddNPAndRecur(
 
     statLine(manager);
     one = DD_ONE(manager);
+    zero = Cudd_Not(one);
 
     /* Terminal cases. */
     F = Cudd_Regular(f);
     G = Cudd_Regular(g);
     if (G == one) {
 	if (g == one) return(f);
-	else return(g);
+	else return(zero);
     }
     if (F == G) {
 	if (f == g) return(f);
-	else return(Cudd_Not(one));
+	else return(zero);
     }
     if (F == one) {
 	return(f);
