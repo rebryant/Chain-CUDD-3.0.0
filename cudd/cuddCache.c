@@ -702,7 +702,7 @@ cuddCacheProfile(
   FILE * fp)
 {
     DdCache *cache = table->cache;
-    int slots = table->cacheSlots;
+    unsigned slots = table->cacheSlots;
     int nzeroes = 0;
     int i, retval;
     double exUsed;
