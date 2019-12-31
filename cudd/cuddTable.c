@@ -248,6 +248,17 @@ cuddAllocNode(
     extern DD_OOMFP MMoutOfMemory;
     DD_OOMFP saveHandler;
 
+    /*
+      12/31/2019.  R. E. Bryant
+      Make test for exceeding node limit stricter
+    */
+    if ((unique->keys - unique->dead) + (unique->keysZ - unique->deadZ) >
+	unique->maxLive) {
+	unique->errorCode = CUDD_TOO_MANY_NODES;
+	return(NULL);
+    }
+
+
     if (unique->nextFree == NULL) {	/* free list is empty */
 	/* Check for exceeded limits. */
         if (unique->terminationCallback != NULL &&
@@ -259,11 +270,14 @@ cuddAllocNode(
             unique->errorCode = CUDD_TIMEOUT_EXPIRED;
             return(NULL);
         }
+#if 0
+	/* Redundant */
 	if ((unique->keys - unique->dead) + (unique->keysZ - unique->deadZ) >
 	    unique->maxLive) {
 	    unique->errorCode = CUDD_TOO_MANY_NODES;
 	    return(NULL);
 	}
+#endif
 	if (unique->stash == NULL || unique->memused > unique->maxmemhard) {
 	    (void) cuddGarbageCollect(unique,1);
 	    mem = NULL;
