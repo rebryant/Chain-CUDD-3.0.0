@@ -283,6 +283,16 @@ typedef int (*DD_THFP)(const void *);
 */
 typedef void (*DD_TOHFP)(DdManager *, void *);
 
+/**
+   @brief Type of DD stored in file
+*/
+typedef enum {
+    CUDD_STORED_BDD,
+    CUDD_STORED_ZDD,
+    CUDD_TORED_ADD
+} dd_store_t;
+
+
 /*---------------------------------------------------------------------------*/
 /* Variable declarations                                                     */
 /*---------------------------------------------------------------------------*/
@@ -983,6 +993,13 @@ extern int Cudd_bddIsVarToBeGrouped(DdManager *dd, int index);
 extern int Cudd_bddSetVarToBeUngrouped(DdManager *dd, int index);
 extern int Cudd_bddIsVarToBeUngrouped(DdManager *dd, int index);
 extern int Cudd_bddIsVarHardGroup(DdManager *dd, int index);
+
+extern int Cudd_bddStore(DdManager *dd, DdNode *root, FILE *outfile);
+extern int Cudd_loadMetadata(FILE *infile, dd_store_t *stype, int *var_count, int *leaf_count, int *node_count, int *root_id);
+extern int Cudd_loadVariables(FILE *infile, int *variable_list);
+extern DdNode *Cudd_bddLoad(DdManager *dd, FILE *infile);
+
+
 #ifdef MTR_H_
 extern MtrNode * Cudd_ReadTree(DdManager *dd);
 extern void Cudd_SetTree(DdManager *dd, MtrNode *tree);
