@@ -704,7 +704,8 @@ cuddCacheProfile(
     DdCache *cache = table->cache;
     unsigned slots = table->cacheSlots;
     int nzeroes = 0;
-    int i, retval;
+    unsigned i;
+    int retval;
     double exUsed;
 
 #ifdef DD_CACHE_PROFILE
