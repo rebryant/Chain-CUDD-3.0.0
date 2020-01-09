@@ -101,15 +101,15 @@ LEAVES
 
 NODES
   
-  N[NODECOUNT] ... N[LEAFCOUNT+1]
+  N[LEAFCOUNT+1] ... N[NODECOUNT]
 
   * Each has format
     ID INDEX/INDICES TChild EChild
     - ID.  Own ID.
     - INDEX.  Without chaining, or with chaining when index == bindex
     - INDICES: of form t:b where t is index and b is bindex
-    - TChild + or - the ID of the T child
-    - EChild + or - the ID of the E child
+    - TChild + or - the ID of the T child.  |Tchild| < ID, 
+    - EChild + or - the ID of the E child.  |Echild| < ID, 
   * Ordered so that each of TChild and EChild will be leaf or occur in list before node
   * Each node on separate line
 
@@ -217,7 +217,7 @@ int Cudd_bddStore(DdManager *dd, DdNode *root, FILE *outfile) {
 	ok = ok && fprintf(outfile, "%d %d\n", i+1, leaf_values[i]) > 0;
     }
     ok = ok && fprintf(outfile, "# Nodes: ID INDICES TCHILD ECHILD\n") > 0;
-    for (i = node_count; ok && i > leaf_count; i--) {
+    for (i = leaf_count+1; ok && i <= node_count; i++) {
 	DdNode *F = idToNode(i, reverse_map);
 	if (F == NULL)
 	    goto done;
@@ -254,11 +254,11 @@ extern int Cudd_loadMetadata(FILE *infile, dd_store_t *stype, int *var_count, in
     char ctype;
     int retval = 0;
     if (line == NULL) {
-	fprintf(stderr, "Unexpected EOF reading metadata\n");
+	fprintf(stderr, "ERROR.  DD Load: Unexpected EOF reading metadata\n");
 	return retval;
     }
     if (sscanf(line, "%c %d %d %d %d", &ctype, var_count, leaf_count, node_count, root_id) != 5) {
-	fprintf(stderr, "Couldn't extract header information from '%s'\n", line);
+	fprintf(stderr, "ERROR.  DD Load: Couldn't extract header information from '%s'\n", line);
 	return retval;
     }
     int idx;
@@ -297,11 +297,11 @@ extern int Cudd_loadVariables(FILE *infile, int *variable_list) {
 	char buf[MAXLINE];
 	char *line = getLine(infile, buf);
 	if (!line) {
-	    fprintf(stderr, "Unexpected EOF reading variables\n");
+	    fprintf(stderr, "ERROR.  DD Load: Unexpected EOF reading variables\n");
 	    return 0;
 	}
 	if (sscanf(line, "%d", &idx) != 1) {
-	    fprintf(stderr, "Couldn't read variable index from line '%s'\n", line);
+	    fprintf(stderr, "ERROR.  DD Load: Couldn't read variable index from line '%s'\n", line);
 	    return 0;
 	}
 	variable_list[i] = idx;
@@ -337,11 +337,11 @@ extern DdNode *Cudd_bddLoad(DdManager *dd, FILE *infile) {
 	char buf[MAXLINE];
 	char *line = getLine(infile, buf);
 	if (!line) {
-	    fprintf(stderr, "Unexpected EOF reading variables\n");
+	    fprintf(stderr, "ERROR.  DD Load: Unexpected EOF reading variables\n");
 	    goto done;
 	}
 	if (sscanf(line, "%d", &idx) != 1) {
-	    fprintf(stderr, "Couldn't read variable index from line '%s'\n", line);
+	    fprintf(stderr, "ERROR.  DD Load: Couldn't read variable index from line '%s'\n", line);
 	    goto done;
 	}
 	/* Don't record variable */
@@ -358,17 +358,17 @@ extern DdNode *Cudd_bddLoad(DdManager *dd, FILE *infile) {
 	char buf[MAXLINE];
 	char *line = getLine(infile, buf);
 	if (!line) {
-	    fprintf(stderr, "Unexpected EOF reading leaves\n");
+	    fprintf(stderr, "ERROR.  DD Load: Unexpected EOF reading leaves\n");
 	    goto done;
 	}
 	if (sscanf(line, "%d %d", &id, &value) != 2) {
-	    fprintf(stderr, "Couldn't read leaf data from line '%s'\n", line);
+	    fprintf(stderr, "ERROR.  DD Load: Couldn't read leaf data from line '%s'\n", line);
 	    goto done;
 	}
 	if (value == 1)
 	    f = DD_ONE(dd);
 	else {
-	    fprintf(stderr, "Invalid leaf value %d for BDD\n", value);
+	    fprintf(stderr, "ERROR.  DD Load: Invalid leaf value %d for BDD\n", value);
 	    goto done;
 	}
 	if (st_insert(reverse_map, (void *) (long) id, (void *) f) == ST_OUT_OF_MEM) {
@@ -385,46 +385,46 @@ extern DdNode *Cudd_bddLoad(DdManager *dd, FILE *infile) {
 	char istring[MAXLINE];
 	char sistring[MAXLINE];
 	if (!line) {
-	    fprintf(stderr, "Unexpected EOF reading nodes\n");
+	    fprintf(stderr, "ERROR.  DD Load: Unexpected EOF reading nodes\n");
 	    goto done;
 	}
 	if (sscanf(line, "%d %s %d %d", &id, istring, &tid, &eid) != 4) {
-	    fprintf(stderr, "Couldn't read node data from line '%s'\n", line);
+	    fprintf(stderr, "ERROR.  DD Load: Couldn't read node data from line '%s'\n", line);
 	    goto done;
 	}
 	strcpy(sistring, istring);
 	char *bpos = strstr(istring, ":");
 	if (bpos == NULL) {
 	    if (sscanf(istring, "%d", &index) != 1) {
-		fprintf(stderr, "Couldn't read node index from line '%s' (substring '%s')\n", line, sistring);
+		fprintf(stderr, "ERROR.  DD Load: Couldn't read node index from line '%s' (substring '%s')\n", line, sistring);
 		goto done;
 	    }
 	    bindex = index;
 	} else {
 	    *bpos = '\0';
 	    if (sscanf(istring, "%d", &index) != 1) {
-		fprintf(stderr, "Couldn't read node index from line '%s' (substring '%s')\n", line, sistring);
+		fprintf(stderr, "ERROR.  DD Load: Couldn't read node index from line '%s' (substring '%s')\n", line, sistring);
 		goto done;
 	    }
 	    if (sscanf(bpos+1, "%d", &bindex) != 1) {
-		fprintf(stderr, "Couldn't read node bindex from line '%s' (substring '%s')\n", line, sistring);
+		fprintf(stderr, "ERROR.  DD Load: Couldn't read node bindex from line '%s' (substring '%s')\n", line, sistring);
 		goto done;
 	    }
 	}
 	fv = idToNode(tid, reverse_map);
 	if (!fv) {
-	    fprintf(stderr, "Internal error.  Couldn't find node with ID %d\n", tid);
+	    fprintf(stderr, "ERROR.  DD Load: Couldn't find node with ID %d\n", tid);
 	    goto done;
 	}
 	fnv = idToNode(eid, reverse_map);
 	if (!fnv) {
-	    fprintf(stderr, "Internal error.  Couldn't find node with ID %d\n", eid);
+	    fprintf(stderr, "ERROR.  DD Load: Couldn't find node with ID %d\n", eid);
 	    Cudd_RecursiveDeref(dd, fv);
 	    goto done;
 	}
 	f = cuddBddGenerateNode(dd, index, bindex, fv, fnv, NULL);
 	if (f == NULL) {
-	    fprintf(stderr, "Couldn't generate node %d:%d --> %p, %p\n", index, bindex, fv, fnv);
+	    fprintf(stderr, "ERROR.  DD Load: Couldn't generate node %d:%d --> %p, %p\n", index, bindex, fv, fnv);
 	    Cudd_RecursiveDeref(dd, fv);
 	    Cudd_RecursiveDeref(dd, fnv);
 	    goto done;
@@ -453,23 +453,34 @@ extern DdNode *Cudd_bddLoad(DdManager *dd, FILE *infile) {
     return(retval);
 }
 
-/* Helper function for cuddBddStore.  Performs preorder traversal of DD, assigning node IDs */
+/* Helper function for cuddBddStore.  Performs traversal of DD, assigning node IDs in post order */
 static int assign_id_recursive(DdNode *f, st_table *forward_map, st_table *reverse_map, int *counter) {
     DdNode *F = Cudd_Regular(f);
     DdNode *Fv, *Fnv;
-    uintptr_t long_counter;
+    uintptr_t long_counter = 0;
     if (st_is_member(forward_map, F))
 	return 1;
+
+    /* Mark node with ID 0 to indicate that it's being visited */
+    if (st_insert(forward_map, (void *) F, (void *) long_counter) == ST_OUT_OF_MEM)
+	return 0;
+
+    /* Visit children */
+    Fv = Cudd_T(F);
+    if (!assign_id_recursive(Fv, forward_map, reverse_map, counter))
+	return 0;
+    Fnv = Cudd_E(F);
+    if (!assign_id_recursive(Fnv, forward_map, reverse_map, counter))
+	return 0;
+
+    /* Now assign node the next ID */
     long_counter = ++ *counter;
     if (st_insert(forward_map, (void *) F, (void *) long_counter) == ST_OUT_OF_MEM)
 	return 0;
     if (st_insert(reverse_map, (void *) long_counter, (void *) F) == ST_OUT_OF_MEM)
 	return 0;
-    Fv = Cudd_T(F);
-    if (!assign_id_recursive(Fv, forward_map, reverse_map, counter))
-	return 0;
-    Fnv = Cudd_E(F);
-    return (assign_id_recursive(Fnv, forward_map, reverse_map, counter));
+
+    return 1;
 }
 
 /*
