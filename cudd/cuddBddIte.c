@@ -361,6 +361,53 @@ Cudd_bddAndLimit(
 
 } /* end of Cudd_bddAndLimit */
 
+/**
+  @brief Computes the conjunction of two BDDs f and g unless too many
+  nodes or too many cache lookupsare required.
+
+  @return a pointer to the resulting %BDD if successful; NULL if the
+  intermediate result blows up or more new nodes than `nodeLimit` are
+  required.  Also returns NULL if total number of cache lookups
+  exceeds lookupLimit
+
+  @sideeffect None
+
+  @see Cudd_bddAnd, Cudd_bddAndLimit
+
+*/
+DdNode *
+Cudd_bddAndLimit2(
+  DdManager * dd /**< manager */,
+  DdNode * f /**< first operand */,
+  DdNode * g /**< second operand */,
+  unsigned int nodeLimit /**< maximum number of new nodes */,
+  size_t lookupLimit /**< maximum number of cache lookups */)
+{
+    DdNode *res;
+    unsigned int saveNodeLimit = dd->maxLive;
+    size_t saveLookupLimit = dd->lookupLimit;
+    size_t saveLookupSofar = dd->lookupSofar;
+
+    dd->maxLive = (dd->keys - dd->dead) + (dd->keysZ - dd->deadZ) + nodeLimit;
+    dd->lookupLimit = lookupLimit;
+    dd->lookupSofar = 0;
+
+    do {
+	dd->reordered = 0;
+	res = cuddBddAndRecur(dd,f,g);
+    } while (dd->reordered == 1);
+
+    dd->maxLive = saveLookupLimit;
+    dd->lookupLimit = saveLookupLimit;
+    dd->lookupSofar = saveLookupSofar;
+
+    if (dd->errorCode == CUDD_TIMEOUT_EXPIRED && dd->timeoutHandler) {
+        dd->timeoutHandler(dd, dd->tohArg);
+    }
+    return(res);
+
+} /* end of Cudd_bddAndLimit2 */
+
 
 /**
   @brief Computes the disjunction of two BDDs f and g.
@@ -984,7 +1031,14 @@ cuddBddAndRecur(
 
     /* Check cache. */
     if (F->ref != 1 || G->ref != 1) {
+	/* Check lookup limit (since this operation is used by NPAnd) */
+	if (manager->lookupLimit > 0 && manager->lookupSofar > manager->lookupLimit) {
+	    /* Trigger forced exit */
+	    r = NULL;
+	    goto cleanup;
+	}
 	r = cuddCacheLookup2(manager, Cudd_bddAnd, f, g);
+	manager->lookupSofar ++;
 	if (r != NULL) return(r);
     }
 

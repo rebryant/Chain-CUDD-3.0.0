@@ -138,6 +138,10 @@ Cudd_Init(
     /* Initialize constants. */
     /* Chaining Support */
     unique->chaining = CUDD_CHAIN_NONE;
+    /* Lookup limits */
+    unique->lookupLimit = 0;
+    unique->lookupSofar = 0;
+    /* Other constants */
     unique->one = cuddUniqueConst(unique,1.0);
     if (unique->one == NULL) return(0);
     cuddRef(unique->one);

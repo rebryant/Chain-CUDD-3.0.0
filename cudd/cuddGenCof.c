@@ -275,7 +275,8 @@ Cudd_bddNPAnd(
 } /* end of Cudd_bddNPAnd */
 
 /**
-   @brief Computes f non-polluting-and g unless too many intermediate nodes are required
+   @brief Computes f non-polluting-and g unless too many intermediate nodes are required,
+   or too many cache lookups are required
 
   @details The non-polluting AND of f and g is a hybrid of AND and
   Restrict.  From Restrict, this operation takes the idea of
@@ -296,21 +297,29 @@ Cudd_bddNPAnd(
 
 */
 DdNode *
-Cudd_bddNPAndLimit(
+Cudd_bddNPAndLimit2(
   DdManager * dd,
   DdNode * f,
   DdNode * g,
-  unsigned int limit)
+  unsigned int nodeLimit,
+  size_t lookupLimit)
 {
     DdNode *res;
-    unsigned int saveLimit = dd->maxLive;
+    unsigned int saveNodeLimit = dd->maxLive;
+    size_t saveLookupLimit = dd->lookupLimit;
+    size_t saveLookupSofar = dd->lookupSofar;
 
-    dd->maxLive = (dd->keys - dd->dead) + (dd->keysZ - dd->deadZ) + limit;
+    dd->maxLive = (dd->keys - dd->dead) + (dd->keysZ - dd->deadZ) + nodeLimit;
+    dd->lookupLimit = lookupLimit;
+    dd->lookupSofar = 0;
+
     do {
 	dd->reordered = 0;
 	res = cuddBddNPAndRecur(dd,f,g);
     } while (dd->reordered == 1);
-    dd->maxLive = saveLimit;
+    dd->maxLive = saveNodeLimit;
+    dd->lookupLimit = saveLookupLimit;
+    dd->lookupSofar = saveLookupSofar;
     if (dd->errorCode == CUDD_TIMEOUT_EXPIRED && dd->timeoutHandler) {
         dd->timeoutHandler(dd, dd->tohArg);
     }
@@ -1302,7 +1311,14 @@ cuddBddNPAndRecur(
     /* At this point f and g are not constant. */
     /* Check cache. */
     if (F->ref != 1 || G->ref != 1) {
+	/* Check lookup limit */
+	if (manager->lookupLimit > 0 && manager->lookupSofar > manager->lookupLimit) {
+	    /* Trigger forced exit */
+	    r = NULL;
+	    goto cleanup;
+	}
 	r = cuddCacheLookup2(manager, Cudd_bddNPAnd, f, g);
+	manager->lookupSofar ++;
 	if (r != NULL) return(r);
     }
 

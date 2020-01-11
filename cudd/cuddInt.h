@@ -427,6 +427,9 @@ struct DdSubtable {
 struct DdManager {
     /* Chaining Support */
     Cudd_ChainingType chaining; /* What type of chaining to employ */
+    /* Support for lookup limit on NPAnd */
+    size_t lookupLimit;	/** Number of lookups before give up */
+    size_t lookupSofar;        /** Number of lookups since enabled trigger */
     /* Constants */
     DdNode sentinel;		/**< for collision lists */
     DdNode *one;		/**< constant 1 */
