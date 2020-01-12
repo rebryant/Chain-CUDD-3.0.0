@@ -83,6 +83,14 @@ typedef struct MarkCacheKey {
 /* Macro declarations                                                        */
 /*---------------------------------------------------------------------------*/
 
+/* Check validity of dd node */
+static DdNode *dd_check(DdNode *f) {
+    if (f) {
+	Cudd_Ref(f);
+	Cudd_Deref(f);
+    }
+    return f;
+}
 /** \cond */
 
 /*---------------------------------------------------------------------------*/
@@ -304,7 +312,7 @@ Cudd_bddNPAndLimit2(
   unsigned int nodeLimit,
   size_t lookupLimit)
 {
-    DdNode *res;
+    DdNode *res = NULL;
     unsigned int saveNodeLimit = dd->maxLive;
     size_t saveLookupLimit = dd->lookupLimit;
     size_t saveLookupSofar = dd->lookupSofar;
@@ -325,9 +333,10 @@ Cudd_bddNPAndLimit2(
     if (dd->errorCode == CUDD_TIMEOUT_EXPIRED && dd->timeoutHandler) {
         dd->timeoutHandler(dd, dd->tohArg);
     }
-    return(res);
+    /* Check for validity */
+    return(dd_check(res));
 
-} /* end of Cudd_bddNPAnd */
+} /* end of Cudd_bddNPAndLimit2 */
 
 
 /**
@@ -1282,7 +1291,8 @@ cuddBddNPAndRecur(
   DdNode * g)
 {
     DdNode *F, *ft, *fe, *G, *gt, *ge;
-    DdNode *one, *zero, *r, *t, *e;
+    DdNode *one, *zero, *t, *e;
+    DdNode *r = NULL;
     DdNode *nodes[2];
     int topf, topg;
     unsigned int index, bindex;
@@ -1291,9 +1301,14 @@ cuddBddNPAndRecur(
     int     full_deref[4];
     int i, deref_cnt = 0;
 
+    /* Check arguments */
+    dd_check(f);
+    dd_check(g);
+
     statLine(manager);
-    one = DD_ONE(manager);
-    zero = Cudd_Not(one);
+    one = dd_check(DD_ONE(manager));
+    zero = dd_check(Cudd_Not(one));
+
 
     /* Terminal cases. */
     F = Cudd_Regular(f);
@@ -1316,12 +1331,13 @@ cuddBddNPAndRecur(
 	/* Check lookup limit */
 	if (manager->lookupLimit > 0 && manager->lookupSofar > manager->lookupLimit) {
 	    /* Trigger forced exit */
-	    r = NULL;
-	    goto cleanup;
+	    return(NULL);
 	}
-	r = cuddCacheLookup2(manager, Cudd_bddNPAnd, f, g);
+	r = dd_check(cuddCacheLookup2(manager, Cudd_bddNPAnd, f, g));
 	manager->lookupSofar ++;
-	if (r != NULL) return(r);
+	if (r != NULL) {
+	    return(r);
+	}
     }
 
     checkWhetherToGiveUp(manager);
@@ -1343,11 +1359,14 @@ cuddBddNPAndRecur(
     if (ge == NULL)
 	goto cleanup;
 
+    dd_check(gt);
+    dd_check(ge);
+
     if (topg < topf) {	/* abstract top variable from g */
 	DdNode *d;
 
 	/* Take the OR by applying DeMorgan. */
-	d = cuddBddAndRecur(manager, Cudd_Not(gt), Cudd_Not(ge));
+	d = dd_check(cuddBddAndRecur(manager, Cudd_Not(gt), Cudd_Not(ge)));
 	if (d == NULL)
 	    goto cleanup;
 	d = Cudd_Not(d);
@@ -1355,7 +1374,7 @@ cuddBddNPAndRecur(
 	full_deref[deref_cnt] = 1;
 	deref_set[deref_cnt++] = d;
 
-	r = cuddBddNPAndRecur(manager, f, d);
+	r = dd_check(cuddBddNPAndRecur(manager, f, d));
 	goto cleanup;
     }
 
@@ -1367,19 +1386,22 @@ cuddBddNPAndRecur(
     if (fe == NULL)
 	goto cleanup;
 
-    t = cuddBddNPAndRecur(manager, ft, gt);
+    dd_check(ft);
+    dd_check(fe);
+
+    t = dd_check(cuddBddNPAndRecur(manager, ft, gt));
     if (t == NULL)
 	goto cleanup;
     cuddRef(t);
     full_deref[deref_cnt] = 1;
     deref_set[deref_cnt++] = t;
 
-    e = cuddBddNPAndRecur(manager, fe, ge);
+    e = dd_check(cuddBddNPAndRecur(manager, fe, ge));
     if (e == NULL)
 	goto cleanup;
 
     cuddRef(e);
-    r = cuddBddGenerateNode(manager, index, bindex, t, e, &full_deref[deref_cnt]);
+    r = dd_check(cuddBddGenerateNode(manager, index, bindex, t, e, &full_deref[deref_cnt]));
     deref_set[deref_cnt++] = e;
 
  cleanup:
@@ -1400,110 +1422,6 @@ cuddBddNPAndRecur(
     }
     return(r);
 } /* end of cuddBddNPAndRecur */
-
-#if 0 /* New section */
-/**
-  @brief New way toImplement the recursive step of Cudd_bddNPAnd.
-
-  @return a pointer to the result is successful; NULL otherwise.
-
-  @sideeffect None
-
-  @see Cudd_bddNPAnd
-
-*/
-DdNode *
-cuddBddNPAndRecurNew(
-  DdManager * manager,
-  DdNode * f,
-  DdNode * g)
-{
-    /* Cache used by traversal */
-    unsigned int maxCacheSize = dd->maxCacheHard;
-    DdLocalCache *tcache = cuddLocalCacheInit(manager, 2, 1<<15, maxCacheSize);
-    if (tcache == NULL)
-	return NULL;
-    cuddBddNPAndTraverse(manager, f, g);
-
-    DdNode *r = cuddBddNPAndTrim(manager, f);
-
-    cuddLocalCacheQuit(tcache);
-
-    return (r);
-} /* end of cuddBddNPAndRecurOriginal */
-
-/**
-   @brief Implements traversal phase of cuddBddNPAnd.
-
-   @return 1 if success, 0 if failure
-
-   @sideeffect Marks those nodes in f that must retained in result
-
-   @See cuddBDDNPAndRecur
-**/
-/* Oops.  Chaining adds complications to this code.  Must redesign */
-static int
-cuddBddNPAndTraverse(
-DdManager * manager,
-DdNode * f,
-DdNode * g,
-DdLocalCache tcache)
-{
-    DdNote *fv, *fnv, *gv, *gnv, *nodes[2];
-    DdNode *one, *zero, *r, *t, *e;
-    unsigned int levels[2], level, blevel;
-    unsigned int index, bindex;
-    DdNode *deref_set[4];
-    DdNode key[2];
-    int full_deref[4];
-    int i, deref_cnt = 0;
-    int ok = 1;
-    
-
-    if (Cudd_IsConstant(f))
-	/* Have hit terminal condition */
-	return;
-
-    /* Check if have hit this combination already */
-    key[0] = f; key[1] = g;
-    if (cuddLocalCacheLookup(tcache, key) != NULL)
-	return;
-
-    checkWhetherToGiveup(manager);
-
-    one = DD_ONE(manager);
-    zero = Cudd_Not(one);
-
-    if (g != zero) {
-	/* Mark that this node needs to be retained */
-	DdNode *F = Cudd_Regular(f);
-	F->next = Cudd_Not(F->next);
-    }
-
-    nodes[0] = f; nodes[1] = g;
-    level = cuddBddTop(manager,2,nodes,levels);
-    index = cuddII(manager,level);
-    blevel = cuddBddBottom(manager,2,nodes,levels,level);
-    bindex = cuddII(manager,blevel);
-
-    /* Compute cofactors. */
-    if (cuddBddSimpleCofactor(manager,f,blevel,&fv,&fnv)) {
-	full_deref[deref_cnt] = 1;
-	deref_set[deref_cnt++] = fnv;
-    }
-    if (fnv == NULL)
-	goto cleanup;
-
-    if (cuddBddSimpleCofactor(manager,g,blevel,&gv,&gnv)) {
-	full_deref[deref_cnt] = 1;
-	deref_set[deref_cnt++] = gnv;
-    }
-    if (gnv == NULL)
-	goto cleanup;
-    
-} /* end of cuddBddNPAndTraverse */
-#endif /* New section */
-
 
 /**
   @brief Performs the recursive step of Cudd_addConstrain.
