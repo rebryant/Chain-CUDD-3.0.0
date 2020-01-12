@@ -83,12 +83,15 @@ typedef struct MarkCacheKey {
 /* Macro declarations                                                        */
 /*---------------------------------------------------------------------------*/
 
+#define CHECK_DDS 0
 /* Check validity of dd node */
-static DdNode *dd_check(DdNode *f) {
+static inline DdNode *dd_check(DdNode *f) {
+#if CHECK_DDS
     if (f) {
 	Cudd_Ref(f);
 	Cudd_Deref(f);
     }
+#endif
     return f;
 }
 /** \cond */
