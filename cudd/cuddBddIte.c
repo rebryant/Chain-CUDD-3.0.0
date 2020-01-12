@@ -397,7 +397,7 @@ Cudd_bddAndLimit2(
 	res = cuddBddAndRecur(dd,f,g);
     } while (dd->reordered == 1);
 
-    dd->maxLive = saveLookupLimit;
+    dd->maxLive = saveNodeLimit;
     dd->lookupLimit = saveLookupLimit;
     dd->lookupSofar = saveLookupSofar;
 

@@ -317,9 +317,11 @@ Cudd_bddNPAndLimit2(
 	dd->reordered = 0;
 	res = cuddBddNPAndRecur(dd,f,g);
     } while (dd->reordered == 1);
+
     dd->maxLive = saveNodeLimit;
     dd->lookupLimit = saveLookupLimit;
     dd->lookupSofar = saveLookupSofar;
+
     if (dd->errorCode == CUDD_TIMEOUT_EXPIRED && dd->timeoutHandler) {
         dd->timeoutHandler(dd, dd->tohArg);
     }
