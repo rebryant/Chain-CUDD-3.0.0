@@ -764,6 +764,7 @@ extern DdNode * Cudd_bddIntersect(DdManager *dd, DdNode *f, DdNode *g);
 extern DdNode * Cudd_bddAnd(DdManager *dd, DdNode *f, DdNode *g);
 extern DdNode * Cudd_bddAndLimit(DdManager *dd, DdNode *f, DdNode *g, unsigned int limit);
 extern DdNode * Cudd_bddAndLimit2(DdManager *dd, DdNode *f, DdNode *g, unsigned int nodeLimit, size_t lookupLimit);
+extern size_t Cudd_ReadNewNode(DdManager *dd);
 extern DdNode * Cudd_bddOr(DdManager *dd, DdNode *f, DdNode *g);
 extern DdNode * Cudd_bddOrLimit(DdManager *dd, DdNode *f, DdNode *g, unsigned int limit);
 extern DdNode * Cudd_bddNand(DdManager *dd, DdNode *f, DdNode *g);

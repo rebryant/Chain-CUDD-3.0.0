@@ -428,8 +428,11 @@ struct DdManager {
     /* Chaining Support */
     Cudd_ChainingType chaining; /* What type of chaining to employ */
     /* Support for lookup limit on NPAnd */
-    size_t lookupLimit;	/** Number of lookups before give up */
+    size_t lookupLimit;	       /** Number of lookups before give up */
     size_t lookupSofar;        /** Number of lookups since enabled trigger */
+    /* Support for new node limit in NPAnd */
+    size_t newNodeLimit;       /** Number of new nodes before give up */
+    size_t newNodeSoFar;       /** Number of new nodes since enabled trigger */
     /* Constants */
     DdNode sentinel;		/**< for collision lists */
     DdNode *one;		/**< constant 1 */
