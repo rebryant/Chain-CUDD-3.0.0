@@ -1311,7 +1311,6 @@ cuddBddNPAndRecur(
     DdNode *F, *ft, *fe, *G, *gt, *ge;
     DdNode *one, *zero, *t, *e;
     DdNode *r = NULL;
-    DdNode *R;
     DdNode *nodes[2];
     int topf, topg;
     unsigned int index, bindex;
@@ -1319,6 +1318,7 @@ cuddBddNPAndRecur(
     DdNode  *deref_set[4];
     int     full_deref[4];
     int i, deref_cnt = 0;
+    unsigned int keyCount;
 
     /* Check arguments */
     dd_check(f);
@@ -1420,12 +1420,15 @@ cuddBddNPAndRecur(
 	goto cleanup;
 
     cuddRef(e);
+    
+    keyCount = manager->keys;
+
     r = dd_check(cuddBddGenerateNode(manager, index, bindex, t, e, &full_deref[deref_cnt]));
     deref_set[deref_cnt++] = e;
+
     if (r) {
 	/* See if have generated a new node in the DD */
-	R = Cudd_Regular(r);
-	if (R->ref == 1)
+	if (keyCount < manager->keys)
 	    manager->newNodeSoFar++;
     }
 
