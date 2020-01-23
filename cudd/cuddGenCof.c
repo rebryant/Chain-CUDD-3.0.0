@@ -286,20 +286,6 @@ Cudd_bddNPAnd(
 } /* end of Cudd_bddNPAnd */
 
 /**
-   @brief Read number of new nodes created by most recent call the Cudd_bddNPAndLimit2
-
-   @return count
-
-   @sideffect None
-
-   @see Cudd_bddNPAndLimit2
-*/
-size_t Cudd_ReadNewNode(DdManager *dd) {
-    return dd->newNodeSoFar;
-}
-
-
-/**
    @brief Computes f non-polluting-and g unless too many intermediate nodes are required,
    or too many cache lookups are required
 
@@ -337,7 +323,6 @@ Cudd_bddNPAndLimit2(
     dd->maxLive = (dd->keys - dd->dead) + (dd->keysZ - dd->deadZ) + nodeLimit;
     dd->lookupLimit = lookupLimit;
     dd->lookupSofar = 0;
-    dd->newNodeSoFar = 0;
 
     do {
 	dd->reordered = 0;
@@ -1311,7 +1296,6 @@ cuddBddNPAndRecur(
     DdNode *F, *ft, *fe, *G, *gt, *ge;
     DdNode *one, *zero, *t, *e;
     DdNode *r = NULL;
-    DdNode *R;
     DdNode *nodes[2];
     int topf, topg;
     unsigned int index, bindex;
@@ -1422,12 +1406,6 @@ cuddBddNPAndRecur(
     cuddRef(e);
     r = dd_check(cuddBddGenerateNode(manager, index, bindex, t, e, &full_deref[deref_cnt]));
     deref_set[deref_cnt++] = e;
-    if (r) {
-	/* See if have generated a new node in the DD */
-	R = Cudd_Regular(r);
-	if (R->ref == 1)
-	    manager->newNodeSoFar++;
-    }
 
  cleanup:
     if (r == NULL) {
