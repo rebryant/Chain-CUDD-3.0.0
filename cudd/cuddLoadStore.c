@@ -156,25 +156,28 @@ static int show_node(DdNode *f, int id, st_table *forward_map, FILE *outfile);
 static char *getLine(FILE *infile, char *buf);
 
 /**
-  @brief Stores representation of BDD to specified file.
+  @brief Stores representation of DD to specified file.
 
   @return 1 if successful, 0 if failed
 
   @details   FILE assumed to be writable.  It is not closed by operation
 
+  @details ADD storage only handles 0/1-valued ADDs
+
   @sideeffect File written
 
-  @see Cudd_bddLoad
+  @see Cudd_ddLoad
 **/
-int Cudd_bddStore(DdManager *dd, DdNode *root, FILE *outfile) {
-    dd_store_t stype = CUDD_STORED_BDD;
-    int var_count, leaf_count, node_count;
+int Cudd_ddStore(DdManager *dd, DdNode *root, FILE *outfile, dd_store_t stype) {
+    int is_bdd = stype == CUDD_STORED_BDD;
+    int var_count, node_count;
     int *var_list = NULL;
     int i, rid;
     st_table *forward_map = NULL;
     st_table *reverse_map = NULL;
     int retval = 0;
-    int leaf_values[1] = {1};
+    int leaf_count = is_bdd ? 1 : 2;
+    int leaf_values[leaf_count];
     int ok = 1;
 
     forward_map = st_init_table(st_ptrcmp, st_ptrhash);
@@ -189,11 +192,17 @@ int Cudd_bddStore(DdManager *dd, DdNode *root, FILE *outfile) {
     if (var_count == CUDD_OUT_OF_MEM)
 	goto done;
 
-    leaf_count = 1;
     node_count = 0;
 
+    leaf_values[0] = 1;
     if (st_insert(forward_map, (void *) DD_ONE(dd), (void *) (uintptr_t) ++node_count) == ST_OUT_OF_MEM)
 	goto done;
+
+    if (!is_bdd) {
+	leaf_values[1] = 0;
+	if (st_insert(forward_map, (void *) DD_ZERO(dd), (void *) (uintptr_t) ++node_count) == ST_OUT_OF_MEM)
+	    goto done;
+    }
 
     /* Recursively assign IDs to nodes */
     if (!assign_id_recursive(root, forward_map, reverse_map, &node_count))
@@ -246,9 +255,9 @@ int Cudd_bddStore(DdManager *dd, DdNode *root, FILE *outfile) {
 
   @sideeffect Locations designated by pointer arguments are updated
 
-  @see Cudd_bddLoad
+  @see Cudd_ddLoad
 **/
-extern int Cudd_loadMetadata(FILE *infile, dd_store_t *stype, int *var_count, int *leaf_count, int *node_count, int *root_id) {
+int Cudd_loadMetadata(FILE *infile, dd_store_t *stype, int *var_count, int *leaf_count, int *node_count, int *root_id) {
     char buf[MAXLINE];
     char *line = getLine(infile, buf);
     char ctype;
@@ -284,10 +293,10 @@ extern int Cudd_loadMetadata(FILE *infile, dd_store_t *stype, int *var_count, in
 
   @sideeffect Indices of variables written to array variable_list
 
-  @see Cudd_bddLoad
+  @see Cudd_ddLoad
 **/
-extern int Cudd_loadVariables(FILE *infile, int *variable_list) {
-    dd_store_t stype;
+int Cudd_loadVariables(FILE *infile, int *variable_list) {
+    dd_store_t stype = CUDD_STORED_BDD;
     int var_count, leaf_count, node_count, root_id;
     int i;
     if (!Cudd_loadMetadata(infile, &stype, &var_count, &leaf_count, &node_count, &root_id))
@@ -310,7 +319,7 @@ extern int Cudd_loadVariables(FILE *infile, int *variable_list) {
 }
 
 /**
-  @brief Reads BDD from specified file.
+  @brief Reads DD from specified file.
 
   @return 1 if successful, 0 if failed
 
@@ -318,17 +327,16 @@ extern int Cudd_loadVariables(FILE *infile, int *variable_list) {
   file.  File is not closed by operation.  Must have declared
   sufficient number of variables already in DD.
 
-  @sideeffect Nodes from file are added to DD.
+  @sideeffect Nodes from file are added to DD.  Sets *stype to dd type
 
-  @see Cudd_bddStore
+  @see Cudd_ddLoad
 **/
-extern DdNode *Cudd_bddLoad(DdManager *dd, FILE *infile) {
-    dd_store_t stype;
+DdNode *Cudd_ddLoad(DdManager *dd, FILE *infile, dd_store_t *stype) {
     int var_count, leaf_count, node_count, root_id;
     st_table *reverse_map = NULL;
     DdNode *retval = NULL;
 
-    if (!Cudd_loadMetadata(infile, &stype, &var_count, &leaf_count, &node_count, &root_id))
+    if (!Cudd_loadMetadata(infile, stype, &var_count, &leaf_count, &node_count, &root_id))
 	goto done;
 
     int i;
@@ -367,8 +375,10 @@ extern DdNode *Cudd_bddLoad(DdManager *dd, FILE *infile) {
 	}
 	if (value == 1)
 	    f = DD_ONE(dd);
+	else if (*stype != CUDD_STORED_BDD && value == 0)
+	    f = DD_ZERO(dd);
 	else {
-	    fprintf(stderr, "ERROR.  DD Load: Invalid leaf value %d for BDD\n", value);
+	    fprintf(stderr, "ERROR.  DD Load: Invalid leaf value %d for DD\n", value);
 	    goto done;
 	}
 	if (st_insert(reverse_map, (void *) (long) id, (void *) f) == ST_OUT_OF_MEM) {
@@ -422,7 +432,10 @@ extern DdNode *Cudd_bddLoad(DdManager *dd, FILE *infile) {
 	    Cudd_RecursiveDeref(dd, fv);
 	    goto done;
 	}
-	f = cuddBddGenerateNode(dd, index, bindex, fv, fnv, NULL);
+	if (*stype == CUDD_STORED_ZDD)
+	    f = cuddZddGenerateNode(dd, index, bindex, fv, fnv, NULL);
+	else
+	    f = cuddBddGenerateNode(dd, index, bindex, fv, fnv, NULL);
 	if (f == NULL) {
 	    fprintf(stderr, "ERROR.  DD Load: Couldn't generate node %d:%d --> %p, %p\n", index, bindex, fv, fnv);
 	    Cudd_RecursiveDeref(dd, fv);
